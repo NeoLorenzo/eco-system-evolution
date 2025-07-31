@@ -30,10 +30,10 @@ class TimeManager:
             print(f"Event: Simulation speed set to level {level} (x{self.current_multiplier}).")
 
     def get_display_string(self):
-        days = int(self.total_sim_seconds // 86400)
-        hours = int((self.total_sim_seconds % 86400) // 3600)
-        minutes = int((self.total_sim_seconds % 3600) // 60)
-        seconds = int(self.total_sim_seconds % 60)
+        days = int(self.total_sim_seconds // C.SECONDS_PER_DAY)
+        hours = int((self.total_sim_seconds % C.SECONDS_PER_DAY) // C.SECONDS_PER_HOUR)
+        minutes = int((self.total_sim_seconds % C.SECONDS_PER_HOUR) // C.SECONDS_PER_MINUTE)
+        seconds = int(self.total_sim_seconds % C.SECONDS_PER_MINUTE)
         
         time_str = f"Day: {days}, {hours:02d}:{minutes:02d}:{seconds:02d}"
         speed_str = f"Speed: x{self.current_multiplier}"

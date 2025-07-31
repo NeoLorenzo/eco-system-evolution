@@ -9,14 +9,12 @@ def draw_loading_screen(screen, font, progress, total):
 
     # Render text
     text_surface = font.render("Loading World...", True, C.COLOR_WHITE)
-    text_rect = text_surface.get_rect(center=(C.SCREEN_WIDTH / 2, C.SCREEN_HEIGHT / 2 - 50))
+    text_rect = text_surface.get_rect(center=(C.SCREEN_WIDTH / 2, C.SCREEN_HEIGHT / 2 - C.UI_LOADING_TEXT_OFFSET_Y))
     screen.blit(text_surface, text_rect)
 
     # Draw progress bar
-    bar_width = 400
-    bar_height = 30
-    bar_x = (C.SCREEN_WIDTH - bar_width) / 2
-    bar_y = (C.SCREEN_HEIGHT - bar_height) / 2
+    bar_x = (C.SCREEN_WIDTH - C.UI_LOADING_BAR_WIDTH) / 2
+    bar_y = (C.SCREEN_HEIGHT - C.UI_LOADING_BAR_HEIGHT) / 2
     
     progress_ratio = progress / total
     current_bar_width = bar_width * progress_ratio

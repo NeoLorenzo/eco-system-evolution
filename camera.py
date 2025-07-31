@@ -61,4 +61,4 @@ class Camera:
         width = self.scale(C.WORLD_WIDTH_CM)
         height = self.scale(C.WORLD_HEIGHT_CM)
         border_rect = pygame.Rect(start_x, start_y, width, height)
-        pygame.draw.rect(screen, C.COLOR_BLACK, border_rect, 1)
+        pygame.draw.rect(screen, C.COLOR_BLACK, border_rect, C.WORLD_BORDER_WIDTH_PIXELS)

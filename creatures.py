@@ -18,7 +18,7 @@ class Creature:
         self.energy = C.CREATURE_INITIAL_ENERGY
         self.age = 0
         self.is_alive = True
-        self.id = random.randint(1000, 9999)
+        self.id = random.randint(C.CREATURE_ID_MIN, C.CREATURE_ID_MAX)
         print(f"DEBUG: Creature {self.id} created at ({x:.0f}, {y:.0f}). Initial Energy: {self.energy}")
 
     def die(self, world, cause):
@@ -119,7 +119,7 @@ class Plant(Creature):
         for neighbor in neighbors:
             if neighbor is self: continue
             total_competition_mass += neighbor.radius**2
-        competition_factor = 1 / (1 + total_competition_mass * 0.001)
+        competition_factor = 1 / (1 + total_competition_mass * C.PLANT_COMPETITION_MASS_FACTOR)
         return competition_factor
 
     def update(self, world, delta_time):
@@ -132,7 +132,7 @@ class Plant(Creature):
             return
 
         time_to_process = self.logic_update_accumulator
-        print(f"\n--- PLANT {self.id} LOGIC TICK (Age: {self.age/86400:.1f} days) ---")
+        print(f"\n--- PLANT {self.id} LOGIC TICK (Age: {self.age/C.SECONDS_PER_DAY:.1f} days) ---")
         print(f"  Processing a time chunk of {time_to_process:.2f} seconds.")
         self.logic_update_accumulator = 0.0
 
@@ -201,7 +201,7 @@ class Plant(Creature):
                 if not self.is_mature:
                     if self.check_if_mature():
                         self.is_mature = True
-                        print(f"DEBUG ({self.id}): State changed to MATURE at age {self.age/86400:.1f} days!")
+                        print(f"DEBUG ({self.id}): State changed to MATURE at age {self.age/C.SECONDS_PER_DAY:.1f} days!")
             elif internal_tick_counter < 3:
                 print(f"    Growth Check (Deficit of {net_energy_production:.4f} J):")
                 print(f"      - Decision: CANNOT GROW.")
@@ -238,7 +238,7 @@ class Plant(Creature):
             pygame.draw.circle(screen, C.COLOR_PLANT_CORE, screen_pos, core_radius)
 
     def print_debug_report(self):
-        days_old = self.age / 86400
+        days_old = self.age / C.SECONDS_PER_DAY
         print("\n--- PLANT ON-CLICK DEBUG REPORT ---")
         print(f"  Creature ID: {self.id}")
         print(f"  Age: {days_old:.2f} simulation days ({self.age:.0f} seconds)")
@@ -278,7 +278,7 @@ class Animal(Creature):
     def update(self, world, delta_time):
         if not self.is_alive: return
         self.age += delta_time
-        metabolism_cost = 1.0 * delta_time
+        metabolism_cost = C.ANIMAL_METABOLISM_PER_SECOND * delta_time
         self.energy -= metabolism_cost
         if self.energy <= 0:
             self.die(world, "starvation")

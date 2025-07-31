@@ -8,6 +8,12 @@ SIMULATION_TICK_RATE = 60.0 # The fixed number of logic updates per second
 SIMULATION_TICK_INTERVAL_SECONDS = 1.0 / SIMULATION_TICK_RATE
 SPATIAL_UPDATE_INTERVAL_SECONDS = 1.0 # Rebuild the quadtree once per second
 QUADTREE_CAPACITY = 4
+MILLISECONDS_PER_SECOND = 1000.0
+PROFILER_PRINT_TOP_N = 15
+UI_LOADING_BAR_UPDATE_INTERVAL = 10
+SECONDS_PER_DAY = 86400
+SECONDS_PER_HOUR = 3600
+SECONDS_PER_MINUTE = 60
 
 # =============================================================================
 # --- WORLD & ENVIRONMENT ---
@@ -31,6 +37,11 @@ TERRAIN_WATER_LEVEL = 0.41
 TERRAIN_SAND_LEVEL = 0.42
 TERRAIN_GRASS_LEVEL = 0.57
 TERRAIN_DIRT_LEVEL = 0.59
+ENVIRONMENT_VIEW_MODE_COUNT = 3
+
+CHUNK_RENDER_OVERLAP_PIXELS = 2
+
+WORLD_BORDER_WIDTH_PIXELS = 1
 
 # =============================================================================
 # --- UI, CAMERA & COLORS ---
@@ -54,6 +65,17 @@ COLOR_DRY = (210, 180, 140); COLOR_WET = (70, 130, 180)
 COLOR_PLANT_CANOPY_HEALTHY = (74, 255, 0, 120)
 COLOR_PLANT_CANOPY_SICKLY = (189, 183, 107, 120)
 COLOR_PLANT_CORE = (101, 67, 33)
+
+TEMP_COLOR_THRESHOLD_COLD = 0.25
+TEMP_COLOR_THRESHOLD_TEMPERATE = 0.5
+TEMP_COLOR_THRESHOLD_HOT = 0.75
+
+UI_FONT_SIZE = 36
+UI_TIME_DISPLAY_POS_X = 10
+UI_TIME_DISPLAY_POS_Y = 10
+UI_LOADING_TEXT_OFFSET_Y = 50
+UI_LOADING_BAR_WIDTH = 400
+UI_LOADING_BAR_HEIGHT = 30
 
 # =============================================================================
 # --- PHYSICS & BIOLOGY CONSTANTS (REAL-WORLD VALUES) ---
@@ -129,6 +151,9 @@ CREATURE_MAX_AGE_SECONDS = 300
 CREATURE_REPRODUCTION_ENERGY_THRESHOLD = 6000.0 # Joules
 CREATURE_REPRODUCTION_ENERGY_COST = 3000.0      # Joules
 
+CREATURE_ID_MIN = 1000
+CREATURE_ID_MAX = 9999
+
 # =============================================================================
 # --- PLANTS ---
 # =============================================================================
@@ -175,6 +200,8 @@ PLANT_UPDATE_TICK_SECONDS = 3600.0 # (1 hour)
 # The internal processing chunk size for a plant's logic loop.
 PLANT_INTERNAL_TICK_SECONDS = 60.0
 
+PLANT_COMPETITION_MASS_FACTOR = 0.001
+
 # =============================================================================
 # --- ANIMALS ---
 # =============================================================================
@@ -189,3 +216,5 @@ ANIMAL_SPEED_CM_PER_SEC = 20.0
 # Net energy stored = (Photosynthesis - Metabolism) * Area.
 # A rough estimate gives this a high but plausible value.
 ANIMAL_ENERGY_PER_PLANT = 7500.0
+
+ANIMAL_METABOLISM_PER_SECOND = 1.0

@@ -14,7 +14,7 @@ def initialize_simulation():
     print(f"Creating display surface with width: {C.SCREEN_WIDTH} and height: {C.SCREEN_HEIGHT}")
     screen = pygame.display.set_mode((C.SCREEN_WIDTH, C.SCREEN_HEIGHT))
     pygame.display.set_caption("Eco-System Evolution")
-    font = pygame.font.Font(None, 36)
+    font = pygame.font.Font(None, C.UI_FONT_SIZE)
     print("Display surface and font created.")
     return screen, font
 
@@ -35,7 +35,7 @@ def run_simulation():
         # --- Get Real Time ---
         # This is how much real-world time has passed.
         # We cap it to prevent a "spiral of death" if a frame takes too long.
-        real_delta_seconds = min(clock.tick(C.CLOCK_TICK_RATE) / 1000.0, 0.25)
+        real_delta_seconds = min(clock.tick(C.CLOCK_TICK_RATE) / C.MILLISECONDS_PER_SECOND, 0.25)
 
         # --- Event Handling (No Change) ---
         for event in pygame.event.get():
@@ -74,7 +74,7 @@ def run_simulation():
         world.draw(screen)
         
         time_ui_surface = font.render(world.time_manager.get_display_string(), True, C.COLOR_WHITE)
-        screen.blit(time_ui_surface, (10, 10))
+        screen.blit(time_ui_surface, (C.UI_TIME_DISPLAY_POS_X, C.UI_TIME_DISPLAY_POS_Y))
 
         pygame.display.flip()
 
@@ -106,4 +106,4 @@ if __name__ == '__main__':
         # Sort the stats by the cumulative time spent in each function
         stats.sort_stats(pstats.SortKey.CUMULATIVE)
         # Print the top 15 results
-        stats.print_stats(15)
+        stats.print_stats(C.PROFILER_PRINT_TOP_N)

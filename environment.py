@@ -88,23 +88,23 @@ class Environment:
         colors = np.zeros((*temp_values.shape, 3), dtype=np.uint8)
         
         # Define masks for each temperature range
-        coldest_mask = temp_values < 0.25
-        cold_mask = (temp_values >= 0.25) & (temp_values < 0.5)
-        hot_mask = (temp_values >= 0.5) & (temp_values < 0.75)
-        hottest_mask = temp_values >= 0.75
+        coldest_mask = temp_values < C.TEMP_COLOR_THRESHOLD_COLD
+        cold_mask = (temp_values >= C.TEMP_COLOR_THRESHOLD_COLD) & (temp_values < C.TEMP_COLOR_THRESHOLD_TEMPERATE)
+        hot_mask = (temp_values >= C.TEMP_COLOR_THRESHOLD_TEMPERATE) & (temp_values < C.TEMP_COLOR_THRESHOLD_HOT)
+        hottest_mask = temp_values >= C.TEMP_COLOR_THRESHOLD_HOT
 
         # Apply colors using vectorized interpolation
         if np.any(coldest_mask):
-            t = (temp_values[coldest_mask] / 0.25)[..., np.newaxis]
+            t = (temp_values[coldest_mask] / C.TEMP_COLOR_THRESHOLD_COLD)[..., np.newaxis]
             colors[coldest_mask] = (1 - t) * np.array(C.COLOR_COLDEST) + t * np.array(C.COLOR_COLD)
         if np.any(cold_mask):
-            t = ((temp_values[cold_mask] - 0.25) / 0.25)[..., np.newaxis]
+            t = ((temp_values[cold_mask] - C.TEMP_COLOR_THRESHOLD_COLD) / C.TEMP_COLOR_THRESHOLD_COLD)[..., np.newaxis]
             colors[cold_mask] = (1 - t) * np.array(C.COLOR_COLD) + t * np.array(C.COLOR_TEMPERATE)
         if np.any(hot_mask):
-            t = ((temp_values[hot_mask] - 0.5) / 0.25)[..., np.newaxis]
+            t = ((temp_values[hot_mask] - C.TEMP_COLOR_THRESHOLD_TEMPERATE) / C.TEMP_COLOR_THRESHOLD_COLD)[..., np.newaxis]
             colors[hot_mask] = (1 - t) * np.array(C.COLOR_TEMPERATE) + t * np.array(C.COLOR_HOT)
         if np.any(hottest_mask):
-            t = ((temp_values[hottest_mask] - 0.75) / 0.25)[..., np.newaxis]
+            t = ((temp_values[hottest_mask] - C.TEMP_COLOR_THRESHOLD_HOT) / C.TEMP_COLOR_THRESHOLD_COLD)[..., np.newaxis]
             colors[hottest_mask] = (1 - t) * np.array(C.COLOR_HOT) + t * np.array(C.COLOR_HOTTEST)
             
         return np.transpose(colors, (1, 0, 2))
@@ -186,7 +186,7 @@ class Environment:
                 if not chunk_texture: continue
 
                 chunk_screen_pos = camera.world_to_screen(cx * C.CHUNK_SIZE_CM, cy * C.CHUNK_SIZE_CM)
-                scaled_size = int(C.CHUNK_SIZE_CM * camera.zoom) + 2
+                scaled_size = int(C.CHUNK_SIZE_CM * camera.zoom) + C.CHUNK_RENDER_OVERLAP_PIXELS
                 if scaled_size < 1: continue
                 scaled_chunk = pygame.transform.scale(chunk_texture, (scaled_size, scaled_size))
                 screen.blit(scaled_chunk, chunk_screen_pos)

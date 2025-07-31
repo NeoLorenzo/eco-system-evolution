@@ -44,7 +44,7 @@ class World:
         total_chunks_y = int(C.WORLD_HEIGHT_CM // C.CHUNK_SIZE_CM)
         
         # We now have THREE maps to generate
-        total_work = (total_chunks_x * total_chunks_y) * 3
+        total_work = (total_chunks_x * total_chunks_y) * C.ENVIRONMENT_VIEW_MODE_COUNT
         work_done = 0
 
         # --- Loop 1: Generate Terrain ---
@@ -54,7 +54,7 @@ class World:
                 pygame.event.pump()
                 self.environment.generate_chunk_if_needed(cx, cy)
                 work_done += 1
-                if work_done % 10 == 0:
+                if work_done % C.UI_LOADING_BAR_UPDATE_INTERVAL == 0:
                     draw_loading_screen(screen, font, work_done, total_work)
         
         # --- Loop 2: Generate Temperature ---
@@ -64,7 +64,7 @@ class World:
                 pygame.event.pump()
                 self.environment.generate_chunk_if_needed(cx, cy)
                 work_done += 1
-                if work_done % 10 == 0:
+                if work_done % C.UI_LOADING_BAR_UPDATE_INTERVAL == 0:
                     draw_loading_screen(screen, font, work_done, total_work)
 
         # --- Loop 3: Generate Humidity ---
@@ -74,7 +74,7 @@ class World:
                 pygame.event.pump()
                 self.environment.generate_chunk_if_needed(cx, cy)
                 work_done += 1
-                if work_done % 10 == 0 or work_done == total_work:
+                if work_done % C.UI_LOADING_BAR_UPDATE_INTERVAL == 0 or work_done == total_work:
                     draw_loading_screen(screen, font, work_done, total_work)
 
         # IMPORTANT: Switch back to the default view mode ('terrain')
