@@ -164,7 +164,8 @@ PLANT_REPRODUCTION_COOLDOWN_SECONDS = 31536000.0 # (365 days)
 PLANT_COMPETITION_UPDATE_INTERVAL_SECONDS = 1.0
 
 # The interval (in sim seconds) at which a plant runs its main logic loop.
-PLANT_LOGIC_UPDATE_INTERVAL_SECONDS = 3600.0
+# This is the fixed, discrete time-step for all biological calculations.
+PLANT_LOGIC_UPDATE_INTERVAL_SECONDS = 3600.0 # (1 Hour)
 
 # --- Initial Properties & Size ---
 PLANT_INITIAL_RADIUS_CM = 20
@@ -193,12 +194,6 @@ PLANT_SOIL_EFFICIENCY = {"sand": 0.4, "grass": 1.0, "dirt": 0.7}
 # A soft lifespan. At this age, the plant's efficiency will have dropped significantly.
 # Let's set it to 10 years of simulation time for now.
 PLANT_EXPECTED_LIFESPAN_SECONDS = 315360000.0
-
-# The internal processing interval for plant logic to ensure time-step independence.
-PLANT_UPDATE_TICK_SECONDS = 3600.0 # (1 hour)
-
-# The internal processing chunk size for a plant's logic loop.
-PLANT_INTERNAL_TICK_SECONDS = 60.0
 
 PLANT_COMPETITION_MASS_FACTOR = 0.001
 
