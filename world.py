@@ -20,9 +20,11 @@ class World:
         self.world_boundary = Rectangle(C.WORLD_WIDTH_CM / 2, C.WORLD_HEIGHT_CM / 2, C.WORLD_WIDTH_CM / 2, C.WORLD_HEIGHT_CM / 2)
         self.time_manager = TimeManager()
         
-        # --- NEW: Initialize the quadtree and spatial accumulator ---
         self.quadtree = QuadTree(self.world_boundary, C.QUADTREE_CAPACITY)
         self.spatial_update_accumulator = 0.0
+        
+        # --- NEW: Add a tracker for the debug-focused creature ---
+        self.debug_focused_creature_id = None
         
         self.last_log_time = 0.0
         self.plant_deaths_this_period = 0
@@ -148,15 +150,22 @@ class World:
             animal.draw(screen, self.camera)
     
     def handle_click(self, screen_pos):
-        """Handles a mouse click, checking if any creature was clicked."""
-        # --- NEW METHOD ---
+        """Handles a mouse click, printing a debug report and toggling focused logging."""
         world_x, world_y = self.camera.screen_to_world(screen_pos[0], screen_pos[1])
 
         # Check for clicked plants
         for plant in self.plants:
-            # Use squared distance for efficiency (avoids square root)
             dist_sq = (world_x - plant.x)**2 + (world_y - plant.y)**2
             if dist_sq <= plant.radius**2:
                 print(f"Clicked on a plant at world coordinates ({int(plant.x)}, {int(plant.y)}).")
+                
+                # --- NEW: Toggle focused debug logging ---
+                if self.debug_focused_creature_id == plant.id:
+                    self.debug_focused_creature_id = None
+                    print(f"DEBUG: Stopped focusing on Plant ID: {plant.id}. Detailed logs disabled.")
+                else:
+                    self.debug_focused_creature_id = plant.id
+                    print(f"DEBUG: Now focusing on Plant ID: {plant.id}. Detailed logs enabled.")
+
                 plant.print_debug_report()
-                return # Stop after finding the first plant
+                return

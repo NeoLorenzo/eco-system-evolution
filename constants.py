@@ -169,7 +169,6 @@ PLANT_LOGIC_UPDATE_INTERVAL_SECONDS = 3600.0 # (1 Hour)
 
 # --- Initial Properties & Size ---
 PLANT_INITIAL_RADIUS_CM = 20
-PLANT_MAX_RADIUS_CM = 40.0
 PLANT_CORE_RADIUS_FACTOR = 0.25
 
 # --- Reproduction & Spacing ---
