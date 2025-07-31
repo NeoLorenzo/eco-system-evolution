@@ -17,11 +17,11 @@ def draw_loading_screen(screen, font, progress, total):
     bar_y = (C.SCREEN_HEIGHT - C.UI_LOADING_BAR_HEIGHT) / 2
     
     progress_ratio = progress / total
-    current_bar_width = bar_width * progress_ratio
+    current_bar_width = C.UI_LOADING_BAR_WIDTH * progress_ratio
 
     # Background of the bar
-    pygame.draw.rect(screen, C.COLOR_LOADING_BAR_BG, (bar_x, bar_y, bar_width, bar_height))
+    pygame.draw.rect(screen, C.COLOR_LOADING_BAR_BG, (bar_x, bar_y, C.UI_LOADING_BAR_WIDTH, C.UI_LOADING_BAR_HEIGHT))
     # Foreground of the bar
-    pygame.draw.rect(screen, C.COLOR_LOADING_BAR_FG, (bar_x, bar_y, current_bar_width, bar_height))
+    pygame.draw.rect(screen, C.COLOR_LOADING_BAR_FG, (bar_x, bar_y, current_bar_width, C.UI_LOADING_BAR_HEIGHT))
 
     pygame.display.flip()
