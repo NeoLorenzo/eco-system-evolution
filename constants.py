@@ -202,7 +202,7 @@ ANIMAL_UPDATE_TICK_SECONDS = 60.0 # Process animal logic in 1-minute increments
 ANIMAL_INITIAL_WIDTH_CM = 30
 ANIMAL_INITIAL_HEIGHT_CM = 30
 ANIMAL_SIGHT_RADIUS_CM = 200
-ANIMAL_SPEED_CM_PER_SEC = 20.0
+ANIMAL_SPEED_CM_PER_SEC = 0.0 #TEMPORARY UNTIL ANIMALS GET IMPLIMENTED PROPERLY
 # Energy from eating a plant should be substantial, reflecting the stored biomass.
 # A plant of radius 30cm has an area of ~2827 cm^2.
 # Net energy stored = (Photosynthesis - Metabolism) * Area.
