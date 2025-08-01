@@ -165,7 +165,7 @@ class Plant(Creature):
             max_soil_eff = self.genes.soil_efficiency.get(self.soil_type, 0)
             root_to_canopy_ratio = self.root_radius / (self.radius + 1)
             soil_eff = max_soil_eff * min(1.0, root_to_canopy_ratio * C.PLANT_ROOT_EFFICIENCY_FACTOR)
-            aging_efficiency = math.exp(-(self.age / C.PLANT_EXPECTED_LIFESPAN_SECONDS))
+            aging_efficiency = math.exp(-(self.age / C.PLANT_SENESCENCE_TIMESCALE_SECONDS))
             canopy_area = math.pi * self.radius**2
             root_area = math.pi * self.root_radius**2
             photosynthesis_gain = canopy_area * C.PLANT_PHOTOSYNTHESIS_PER_AREA * self.environment_eff * soil_eff * self.competition_factor * aging_efficiency * internal_tick
@@ -173,8 +173,8 @@ class Plant(Creature):
             net_energy_production = photosynthesis_gain - metabolism_cost
             self.energy += net_energy_production
             
-            # --- MODIFIED: Only print if focused ---
             if is_debug_focused and i < 3:
+                print(f"    Aging Efficiency: {aging_efficiency:.3f}") # DEBUG LOG
                 print(f"    Energy: Gained={photosynthesis_gain:.4f}, Lost={metabolism_cost:.4f}, Net={net_energy_production:.4f}")
 
             # --- NEW LOGIC: Reproduction and Growth are now independent actions ---

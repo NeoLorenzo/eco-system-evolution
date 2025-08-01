@@ -143,9 +143,6 @@ CREATURE_INITIAL_ENERGY = 5000.0
 INITIAL_PLANT_POSITION = (50000, 50000)
 INITIAL_ANIMAL_POSITION = (51000, 51000)
 
-# --- Life Cycle ---
-CREATURE_MAX_AGE_SECONDS = 300
-
 # --- Reproduction ---
 # These values must be achievable after a period of net energy gain.
 CREATURE_REPRODUCTION_ENERGY_THRESHOLD = 6000.0 # Joules
@@ -190,9 +187,10 @@ PLANT_OPTIMAL_HUMIDITY = 0.6
 PLANT_HUMIDITY_TOLERANCE = 0.3
 PLANT_SOIL_EFFICIENCY = {"sand": 0.4, "grass": 1.0, "dirt": 0.7}
 
-# A soft lifespan. At this age, the plant's efficiency will have dropped significantly.
-# Let's set it to 10 years of simulation time for now.
-PLANT_EXPECTED_LIFESPAN_SECONDS = 315360000.0
+# time for senescence. It defines the age at which a plant's metabolic
+# efficiency drops to ~37% (1/e) of its peak. It's a measure of how
+# quickly the plant ages, not a hard limit on how long it can live.
+PLANT_SENESCENCE_TIMESCALE_SECONDS = 315360000.0 # (Represents a characteristic time of 10 years)
 
 PLANT_COMPETITION_MASS_FACTOR = 0.001
 
