@@ -16,6 +16,7 @@ class World:
         self.plants = []
         self.animals = []
         self.newborns = []
+        self.graveyard = []
         self.world_boundary = Rectangle(C.WORLD_WIDTH_CM / 2, C.WORLD_HEIGHT_CM / 2, C.WORLD_WIDTH_CM / 2, C.WORLD_HEIGHT_CM / 2)
         self.time_manager = TimeManager()
         
@@ -23,7 +24,8 @@ class World:
         # A dictionary where keys are future simulation times (in seconds)
         # and values are lists of plants to update at that time.
         self.plant_update_schedule = {}
-        
+        self.animal_update_schedule = {}
+
         self.quadtree = QuadTree(self.world_boundary, C.QUADTREE_CAPACITY)
         self.spatial_update_accumulator = 0.0
         
@@ -54,6 +56,13 @@ class World:
             
         # Add the plant to the list for its scheduled update time.
         self.plant_update_schedule[schedule_key].append(plant)
+
+    def schedule_animal_update(self, animal, delay_seconds):
+        future_time = self.time_manager.total_sim_seconds + delay_seconds
+        schedule_key = int(future_time / C.ANIMAL_UPDATE_TICK_SECONDS) * C.ANIMAL_UPDATE_TICK_SECONDS
+        if schedule_key not in self.animal_update_schedule:
+            self.animal_update_schedule[schedule_key] = []
+        self.animal_update_schedule[schedule_key].append(animal)
 
     def _rebuild_spatial_partition(self):
         """Creates a new quadtree and inserts all living creatures."""
@@ -113,6 +122,7 @@ class World:
         
         initial_animal = Animal(C.INITIAL_ANIMAL_POSITION[0], C.INITIAL_ANIMAL_POSITION[1])
         self.animals.append(initial_animal)
+        self.schedule_animal_update(initial_animal, C.ANIMAL_UPDATE_TICK_SECONDS)
         log.log("World population complete.")
 
     def add_newborn(self, creature):
@@ -121,9 +131,12 @@ class World:
             self.plant_births_this_period += 1
             # --- CHANGE: Schedule the newborn plant's first update ---
             self.schedule_plant_update(creature, C.PLANT_LOGIC_UPDATE_INTERVAL_SECONDS)
+        elif isinstance(creature, Animal):
+            self.schedule_animal_update(creature, C.ANIMAL_UPDATE_TICK_SECONDS)
 
     def report_death(self, creature):
         """A creature calls this method when it dies to be counted."""
+        self.graveyard.append(creature)
         if isinstance(creature, Plant):
             self.plant_deaths_this_period += 1
         elif isinstance(creature, Animal):
@@ -132,44 +145,41 @@ class World:
     def update(self, delta_time):
         if delta_time == 0: return
         
-        # --- Tier 1: Spatial Partitioning (Slow Tick) ---
         self.spatial_update_accumulator += delta_time
         if self.spatial_update_accumulator >= C.SPATIAL_UPDATE_INTERVAL_SECONDS:
             self._rebuild_spatial_partition()
             self.spatial_update_accumulator = 0.0
 
-        # --- Tier 2: Scheduled Plant Logic (Fast Tick, Efficient) ---
-        # --- MAJOR CHANGE: This replaces the inefficient loop ---
-        
-        # Get the key for the current time bucket (rounded down to the hour)
-        current_time_key = int(self.time_manager.total_sim_seconds / C.PLANT_LOGIC_UPDATE_INTERVAL_SECONDS) * C.PLANT_LOGIC_UPDATE_INTERVAL_SECONDS
-        
-        # Check if there are any plants scheduled to be updated in this bucket
-        if current_time_key in self.plant_update_schedule:
-            # Get the list of plants and remove it from the schedule to prevent re-processing
-            plants_to_update = self.plant_update_schedule.pop(current_time_key)
-            
+        # --- Scheduled Plant Logic ---
+        plant_time_key = int(self.time_manager.total_sim_seconds / C.PLANT_LOGIC_UPDATE_INTERVAL_SECONDS) * C.PLANT_LOGIC_UPDATE_INTERVAL_SECONDS
+        if plant_time_key in self.plant_update_schedule:
+            plants_to_update = self.plant_update_schedule.pop(plant_time_key)
             for plant in plants_to_update:
-                # A plant might have died since it was scheduled, so we double-check.
                 if plant.is_alive:
-                    # Call the plant's logic. It will run its full hourly cycle.
                     plant.update(self, C.PLANT_LOGIC_UPDATE_INTERVAL_SECONDS)
-                    # IMPORTANT: Re-schedule the plant for its next update in one hour.
-                    self.schedule_plant_update(plant, C.PLANT_LOGIC_UPDATE_INTERVAL_SECONDS)
+                    if plant.is_alive: # Check again in case it died during its update
+                        self.schedule_plant_update(plant, C.PLANT_LOGIC_UPDATE_INTERVAL_SECONDS)
 
-        # --- Tier 3: Animal Logic (Still runs every tick for now) ---
-        for animal in self.animals:
-            animal.update(self, delta_time)
+        # --- NEW: Scheduled Animal Logic ---
+        animal_time_key = int(self.time_manager.total_sim_seconds / C.ANIMAL_UPDATE_TICK_SECONDS) * C.ANIMAL_UPDATE_TICK_SECONDS
+        if animal_time_key in self.animal_update_schedule:
+            animals_to_update = self.animal_update_schedule.pop(animal_time_key)
+            for animal in animals_to_update:
+                if animal.is_alive:
+                    animal.update(self, C.ANIMAL_UPDATE_TICK_SECONDS)
+                    if animal.is_alive:
+                        self.schedule_animal_update(animal, C.ANIMAL_UPDATE_TICK_SECONDS)
 
-        # --- Housekeeping (Now more efficient) ---
-        dead_plants = [plant for plant in self.plants if not plant.is_alive]
-        for plant in dead_plants:
-            self.plants.remove(plant)
+        # --- Housekeeping (Now MUCH more efficient) ---
+        # --- CHANGE: Process the graveyard instead of list comprehensions ---
+        for dead_creature in self.graveyard:
+            if isinstance(dead_creature, Plant):
+                self.plants.remove(dead_creature)
+            elif isinstance(dead_creature, Animal):
+                self.animals.remove(dead_creature)
+        self.graveyard.clear()
 
-        dead_animals = [animal for animal in self.animals if not animal.is_alive]
-        for animal in dead_animals:
-            self.animals.remove(animal)
-
+        # Process newborns
         for creature in self.newborns:
             if isinstance(creature, Plant):
                 self.plants.append(creature)
@@ -177,7 +187,7 @@ class World:
                 self.animals.append(creature)
         self.newborns.clear()
 
-        # --- Population Statistics Logging (No Change) ---
+        # --- Population Statistics Logging ---
         if self.time_manager.total_sim_seconds - self.last_log_time_seconds >= C.UI_LOG_INTERVAL_SECONDS:
             self._print_population_statistics()
             self.last_log_time_seconds = self.time_manager.total_sim_seconds
@@ -188,6 +198,7 @@ class World:
     def toggle_environment_view(self):
         self.environment.toggle_view_mode()
         self.camera.dirty = True
+        self.camera.zoom_changed = True
 
     def draw(self, screen):
         self.environment.draw(screen, self.camera)

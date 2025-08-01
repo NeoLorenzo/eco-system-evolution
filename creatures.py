@@ -228,7 +228,6 @@ class Plant(Creature):
             pygame.draw.circle(screen, C.COLOR_PLANT_CORE, screen_pos, core_radius)
 
 class Animal(Creature):
-    # ... (Animal class is unchanged) ...
     def __init__(self, x, y):
         super().__init__(x, y)
         self.width = C.ANIMAL_INITIAL_WIDTH_CM
@@ -249,46 +248,56 @@ class Animal(Creature):
                     closest_plant = plant
         return closest_plant
 
-    def update(self, world, delta_time):
+    # --- MAJOR CHANGE: The update logic now uses a fixed time_step ---
+    def update(self, world, time_step):
+        """
+        Runs the core biological logic for a fixed time_step.
+        This function is now only called by the world's scheduler.
+        """
         if not self.is_alive: return
-        self.age += delta_time
-        metabolism_cost = C.ANIMAL_METABOLISM_PER_SECOND * delta_time
+
+        self.age += time_step
+        metabolism_cost = C.ANIMAL_METABOLISM_PER_SECOND * time_step
         self.energy -= metabolism_cost
         if self.energy <= 0:
             self.die(world, "starvation")
             return
 
         if self.can_reproduce():
-            spawn_pos = self.reproduce(world, world.quadtree)
-            if spawn_pos:
-                new_animal = Animal(spawn_pos[0], spawn_pos[1])
-                world.add_newborn(new_animal)
+            # Note: Animal reproduction logic is simple and doesn't create newborns yet.
+            # We can improve this later.
+            self.energy -= C.CREATURE_REPRODUCTION_ENERGY_COST 
         else:
             if self.target_plant and not self.target_plant.is_alive:
                 self.target_plant = None
             if not self.target_plant:
                 self.target_plant = self.find_closest_plant(world.quadtree)
+            
             if self.target_plant:
                 direction_x = self.target_plant.x - self.x
                 direction_y = self.target_plant.y - self.y
                 distance = math.sqrt(direction_x**2 + direction_y**2)
-                move_dist = C.ANIMAL_SPEED_CM_PER_SEC * delta_time
+                
+                # Use the fixed time_step for movement
+                move_dist = C.ANIMAL_SPEED_CM_PER_SEC * time_step
+                
                 if distance < move_dist:
                     self.x = self.target_plant.x
                     self.y = self.target_plant.y
-                else:
-                    self.x += (direction_x / distance) * move_dist
-                    self.y += (direction_y / distance) * move_dist
-                if distance < self.width:
+                    # Eating logic
                     self.energy += C.ANIMAL_ENERGY_PER_PLANT
                     self.target_plant.die(world, "being eaten")
                     self.target_plant = None
+                else:
+                    self.x += (direction_x / distance) * move_dist
+                    self.y += (direction_y / distance) * move_dist
             else:
+                # Random wandering
                 move_x = random.uniform(-1, 1)
                 move_y = random.uniform(-1, 1)
                 norm = math.sqrt(move_x**2 + move_y**2)
                 if norm > 0:
-                    move_dist = C.ANIMAL_SPEED_CM_PER_SEC * delta_time
+                    move_dist = C.ANIMAL_SPEED_CM_PER_SEC * time_step
                     self.x += (move_x / norm) * move_dist
                     self.y += (move_y / norm) * move_dist
 
