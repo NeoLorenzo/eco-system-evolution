@@ -80,8 +80,6 @@ class Plant(Creature):
         self.reproduction_cooldown = 0.0
         self.competition_factor = 1.0
         self.competition_update_accumulator = 0.0
-        # This accumulator will store unprocessed simulation time.
-        self.logic_update_accumulator = 0.0 # units: seconds
 
         self.elevation = world.environment.get_elevation(self.x, self.y)
         self.soil_type = self.get_soil_type(self.elevation)
@@ -120,31 +118,29 @@ class Plant(Creature):
         competition_factor = 1 / (1 + total_competition_mass * C.PLANT_COMPETITION_MASS_FACTOR)
         return competition_factor
 
-    def update(self, world, delta_time):
+    # --- MAJOR CHANGE: The update logic is now much cleaner. ---
+    def update(self, world, time_step):
+        """
+        Runs the core biological logic for a fixed time_step.
+        This function is now only called by the world's scheduler.
+        """
         if not self.is_alive: return
 
-        self.age += delta_time
-        self.logic_update_accumulator += delta_time
-
-        if self.logic_update_accumulator < C.PLANT_LOGIC_UPDATE_INTERVAL_SECONDS:
-            return
-        
-        time_to_process = self.logic_update_accumulator
-        self.logic_update_accumulator = 0.0
+        # The time_step is now a fixed value (e.g., 3600 seconds) passed by the scheduler.
+        self.age += time_step
 
         is_debug_focused = (world.debug_focused_creature_id == self.id)
 
         if is_debug_focused:
             log.log(f"\n--- PLANT {self.id} LOGIC (Age: {self.age/C.SECONDS_PER_DAY:.1f} days) ---")
-            log.log(f"  Processing a single consolidated tick of {time_to_process:.2f}s.")
+            log.log(f"  Processing a single consolidated tick of {time_step:.2f}s.")
             log.log(f"    State: Energy={self.energy:.2f}, Radius={self.radius:.2f}")
 
-        # --- Store cooldown state BEFORE the tick ---
         was_ready_to_reproduce = self.reproduction_cooldown <= 0
 
-        # --- CORE BIOLOGY LOGIC (Consolidated Calculation) ---
-        self.reproduction_cooldown = max(0, self.reproduction_cooldown - time_to_process)
-        self.competition_update_accumulator += time_to_process
+        # --- CORE BIOLOGY LOGIC (Calculations now use time_step directly) ---
+        self.reproduction_cooldown = max(0, self.reproduction_cooldown - time_step)
+        self.competition_update_accumulator += time_step
         
         if self.competition_update_accumulator >= C.PLANT_COMPETITION_UPDATE_INTERVAL_SECONDS:
             self.competition_factor = self.calculate_competition_factor(world.quadtree)
@@ -158,8 +154,8 @@ class Plant(Creature):
         canopy_area = math.pi * self.radius**2
         root_area = math.pi * self.root_radius**2
 
-        photosynthesis_gain = canopy_area * C.PLANT_PHOTOSYNTHESIS_PER_AREA * self.environment_eff * soil_eff * self.competition_factor * aging_efficiency * time_to_process
-        metabolism_cost = (canopy_area + root_area) * C.PLANT_METABOLISM_PER_AREA * self.environment_eff * time_to_process
+        photosynthesis_gain = canopy_area * C.PLANT_PHOTOSYNTHESIS_PER_AREA * self.environment_eff * soil_eff * self.competition_factor * aging_efficiency * time_step
+        metabolism_cost = (canopy_area + root_area) * C.PLANT_METABOLISM_PER_AREA * self.environment_eff * time_step
         net_energy_production = photosynthesis_gain - metabolism_cost
         
         self.energy += net_energy_production
@@ -174,16 +170,11 @@ class Plant(Creature):
                 log.log(f"  Plant {self.id} died from starvation. Final Energy: {self.energy:.2f}")
             return
 
-        # --- NEW, CORRECTED REPRODUCTION LOGIC ---
-        # A plant can only reproduce if its cooldown was ALREADY finished before this tick began.
-        # This prevents it from using the massive time_to_process to instantly reset its own cooldown.
         if was_ready_to_reproduce and self.can_reproduce() and not self.is_overcrowded(world.quadtree):
             if is_debug_focused: log.log("    Reproduction Check: Was ready, has energy. Attempting to spawn.")
             new_plant = self.reproduce(world, world.quadtree)
             if new_plant:
                 world.add_newborn(new_plant)
-                # The cooldown is now set to its full duration. It will have to wait for
-                # future ticks to reduce this again.
                 self.reproduction_cooldown = C.PLANT_REPRODUCTION_COOLDOWN_SECONDS
         
         if net_energy_production > 0:

@@ -1,5 +1,3 @@
-#world.py
-
 import pygame
 from creatures import Plant, Animal
 import constants as C
@@ -21,24 +19,48 @@ class World:
         self.world_boundary = Rectangle(C.WORLD_WIDTH_CM / 2, C.WORLD_HEIGHT_CM / 2, C.WORLD_WIDTH_CM / 2, C.WORLD_HEIGHT_CM / 2)
         self.time_manager = TimeManager()
         
+        # --- NEW: The scheduler for plant logic updates ---
+        # A dictionary where keys are future simulation times (in seconds)
+        # and values are lists of plants to update at that time.
+        self.plant_update_schedule = {}
+        
         self.quadtree = QuadTree(self.world_boundary, C.QUADTREE_CAPACITY)
         self.spatial_update_accumulator = 0.0
         
-        # --- NEW: Add a tracker for the debug-focused creature ---
         self.debug_focused_creature_id = None
         
-        self.last_log_time_seconds = 0.0 # RENAME for clarity
+        self.last_log_time_seconds = 0.0
         self.plant_deaths_this_period = 0
         self.animal_deaths_this_period = 0
         self.plant_births_this_period = 0
         log.log("World created. Creature lists are empty.")
+
+    # --- NEW: Method to schedule a plant's next logic update ---
+    def schedule_plant_update(self, plant, delay_seconds):
+        """
+        Schedules a plant to have its update logic run after a certain delay.
+        It groups plants into hourly buckets to process them together.
+        """
+        # Calculate the future time for the update
+        future_time = self.time_manager.total_sim_seconds + delay_seconds
+        
+        # Round the time down to the nearest hour. This is the "key" for our schedule dictionary.
+        # All plants updating in the same hour will be grouped together.
+        schedule_key = int(future_time / C.PLANT_LOGIC_UPDATE_INTERVAL_SECONDS) * C.PLANT_LOGIC_UPDATE_INTERVAL_SECONDS
+        
+        # If this is the first plant scheduled for this exact hour, create a new list for it.
+        if schedule_key not in self.plant_update_schedule:
+            self.plant_update_schedule[schedule_key] = []
+            
+        # Add the plant to the list for its scheduled update time.
+        self.plant_update_schedule[schedule_key].append(plant)
 
     def _rebuild_spatial_partition(self):
         """Creates a new quadtree and inserts all living creatures."""
         self.quadtree = QuadTree(self.world_boundary, C.QUADTREE_CAPACITY)
         all_creatures = self.plants + self.animals
         for creature in all_creatures:
-            if creature.is_alive: # Only insert living creatures
+            if creature.is_alive:
                 self.quadtree.insert(creature)
 
     def pre_generate_all_chunks(self, screen, font):
@@ -47,12 +69,11 @@ class World:
         total_chunks_x = int(C.WORLD_WIDTH_CM // C.CHUNK_SIZE_CM)
         total_chunks_y = int(C.WORLD_HEIGHT_CM // C.CHUNK_SIZE_CM)
         
-        # We now have THREE maps to generate
         total_work = (total_chunks_x * total_chunks_y) * C.ENVIRONMENT_VIEW_MODE_COUNT
         work_done = 0
 
-        # --- Loop 1: Generate Terrain ---
-        # (Assumes starting view is 'terrain')
+        self.environment.toggle_view_mode() 
+        self.environment.toggle_view_mode() 
         for cx in range(total_chunks_x):
             for cy in range(total_chunks_y):
                 pygame.event.pump()
@@ -61,8 +82,7 @@ class World:
                 if work_done % C.UI_LOADING_BAR_UPDATE_INTERVAL == 0:
                     draw_loading_screen(screen, font, work_done, total_work)
         
-        # --- Loop 2: Generate Temperature ---
-        self.environment.toggle_view_mode() # Switch to 'temperature'
+        self.environment.toggle_view_mode() 
         for cx in range(total_chunks_x):
             for cy in range(total_chunks_y):
                 pygame.event.pump()
@@ -71,8 +91,7 @@ class World:
                 if work_done % C.UI_LOADING_BAR_UPDATE_INTERVAL == 0:
                     draw_loading_screen(screen, font, work_done, total_work)
 
-        # --- Loop 3: Generate Humidity ---
-        self.environment.toggle_view_mode() # Switch to 'humidity'
+        self.environment.toggle_view_mode() 
         for cx in range(total_chunks_x):
             for cy in range(total_chunks_y):
                 pygame.event.pump()
@@ -81,17 +100,17 @@ class World:
                 if work_done % C.UI_LOADING_BAR_UPDATE_INTERVAL == 0 or work_done == total_work:
                     draw_loading_screen(screen, font, work_done, total_work)
 
-        # IMPORTANT: Switch back to the default view mode ('terrain')
         self.environment.toggle_view_mode() 
         
         log.log(f"World pre-generation complete. {work_done} total chunk textures loaded.")
 
     def populate_world(self):
         log.log("Populating the world with initial creatures...")
-        # Pass 'self' (the world instance) to the Plant constructor
         initial_plant = Plant(self, C.INITIAL_PLANT_POSITION[0], C.INITIAL_PLANT_POSITION[1])
         self.plants.append(initial_plant)
-        # We can do the same for Animal later if we optimize it
+        # --- CHANGE: Schedule the first plant's update ---
+        self.schedule_plant_update(initial_plant, C.PLANT_LOGIC_UPDATE_INTERVAL_SECONDS)
+        
         initial_animal = Animal(C.INITIAL_ANIMAL_POSITION[0], C.INITIAL_ANIMAL_POSITION[1])
         self.animals.append(initial_animal)
         log.log("World population complete.")
@@ -100,6 +119,8 @@ class World:
         self.newborns.append(creature)
         if isinstance(creature, Plant):
             self.plant_births_this_period += 1
+            # --- CHANGE: Schedule the newborn plant's first update ---
+            self.schedule_plant_update(creature, C.PLANT_LOGIC_UPDATE_INTERVAL_SECONDS)
 
     def report_death(self, creature):
         """A creature calls this method when it dies to be counted."""
@@ -115,12 +136,28 @@ class World:
         self.spatial_update_accumulator += delta_time
         if self.spatial_update_accumulator >= C.SPATIAL_UPDATE_INTERVAL_SECONDS:
             self._rebuild_spatial_partition()
-            self.spatial_update_accumulator = 0.0 # Reset accumulator
+            self.spatial_update_accumulator = 0.0
 
-        # --- Tier 2: Individual Creature Logic (Fast Tick) ---
-        # This logic runs on every single simulation tick.
-        for plant in self.plants:
-            plant.update(self, delta_time)
+        # --- Tier 2: Scheduled Plant Logic (Fast Tick, Efficient) ---
+        # --- MAJOR CHANGE: This replaces the inefficient loop ---
+        
+        # Get the key for the current time bucket (rounded down to the hour)
+        current_time_key = int(self.time_manager.total_sim_seconds / C.PLANT_LOGIC_UPDATE_INTERVAL_SECONDS) * C.PLANT_LOGIC_UPDATE_INTERVAL_SECONDS
+        
+        # Check if there are any plants scheduled to be updated in this bucket
+        if current_time_key in self.plant_update_schedule:
+            # Get the list of plants and remove it from the schedule to prevent re-processing
+            plants_to_update = self.plant_update_schedule.pop(current_time_key)
+            
+            for plant in plants_to_update:
+                # A plant might have died since it was scheduled, so we double-check.
+                if plant.is_alive:
+                    # Call the plant's logic. It will run its full hourly cycle.
+                    plant.update(self, C.PLANT_LOGIC_UPDATE_INTERVAL_SECONDS)
+                    # IMPORTANT: Re-schedule the plant for its next update in one hour.
+                    self.schedule_plant_update(plant, C.PLANT_LOGIC_UPDATE_INTERVAL_SECONDS)
+
+        # --- Tier 3: Animal Logic (Still runs every tick for now) ---
         for animal in self.animals:
             animal.update(self, delta_time)
 
@@ -140,11 +177,10 @@ class World:
                 self.animals.append(creature)
         self.newborns.clear()
 
-        # --- NEW: Population Statistics Logging ---
+        # --- Population Statistics Logging (No Change) ---
         if self.time_manager.total_sim_seconds - self.last_log_time_seconds >= C.UI_LOG_INTERVAL_SECONDS:
             self._print_population_statistics()
             self.last_log_time_seconds = self.time_manager.total_sim_seconds
-            # Reset counters for the next period
             self.plant_births_this_period = 0
             self.plant_deaths_this_period = 0
             self.animal_deaths_this_period = 0
@@ -165,13 +201,11 @@ class World:
         """Handles a mouse click, printing a debug report and toggling focused logging."""
         world_x, world_y = self.camera.screen_to_world(screen_pos[0], screen_pos[1])
 
-        # Check for clicked plants
         for plant in self.plants:
             dist_sq = (world_x - plant.x)**2 + (world_y - plant.y)**2
             if dist_sq <= plant.radius**2:
                 log.log(f"Clicked on a plant at world coordinates ({int(plant.x)}, {int(plant.y)}).")
                 
-                # --- NEW: Toggle focused debug logging ---
                 if self.debug_focused_creature_id == plant.id:
                     self.debug_focused_creature_id = None
                     log.log(f"DEBUG: Stopped focusing on Plant ID: {plant.id}. Detailed logs disabled.")
