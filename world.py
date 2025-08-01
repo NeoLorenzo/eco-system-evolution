@@ -27,7 +27,6 @@ class World:
         self.animal_update_schedule = {}
 
         self.quadtree = QuadTree(self.world_boundary, C.QUADTREE_CAPACITY)
-        self.spatial_update_accumulator = 0.0
         
         self.debug_focused_creature_id = None
         
@@ -63,14 +62,6 @@ class World:
         if schedule_key not in self.animal_update_schedule:
             self.animal_update_schedule[schedule_key] = []
         self.animal_update_schedule[schedule_key].append(animal)
-
-    def _rebuild_spatial_partition(self):
-        """Creates a new quadtree and inserts all living creatures."""
-        self.quadtree = QuadTree(self.world_boundary, C.QUADTREE_CAPACITY)
-        all_creatures = self.plants + self.animals
-        for creature in all_creatures:
-            if creature.is_alive:
-                self.quadtree.insert(creature)
 
     def pre_generate_all_chunks(self, screen, font):
         """Generates all chunks for ALL view modes (Terrain, Temp, Humidity)."""
@@ -117,19 +108,21 @@ class World:
         log.log("Populating the world with initial creatures...")
         initial_plant = Plant(self, C.INITIAL_PLANT_POSITION[0], C.INITIAL_PLANT_POSITION[1])
         self.plants.append(initial_plant)
-        # --- CHANGE: Schedule the first plant's update ---
         self.schedule_plant_update(initial_plant, C.PLANT_LOGIC_UPDATE_INTERVAL_SECONDS)
+        # --- CHANGE: Insert into quadtree ONCE at birth ---
+        self.quadtree.insert(initial_plant)
         
         initial_animal = Animal(C.INITIAL_ANIMAL_POSITION[0], C.INITIAL_ANIMAL_POSITION[1])
         self.animals.append(initial_animal)
         self.schedule_animal_update(initial_animal, C.ANIMAL_UPDATE_TICK_SECONDS)
+        # --- CHANGE: Insert into quadtree ONCE at birth ---
+        self.quadtree.insert(initial_animal)
         log.log("World population complete.")
 
     def add_newborn(self, creature):
         self.newborns.append(creature)
         if isinstance(creature, Plant):
             self.plant_births_this_period += 1
-            # --- CHANGE: Schedule the newborn plant's first update ---
             self.schedule_plant_update(creature, C.PLANT_LOGIC_UPDATE_INTERVAL_SECONDS)
         elif isinstance(creature, Animal):
             self.schedule_animal_update(creature, C.ANIMAL_UPDATE_TICK_SECONDS)
@@ -137,19 +130,21 @@ class World:
     def report_death(self, creature):
         """A creature calls this method when it dies to be counted."""
         self.graveyard.append(creature)
+        # --- CHANGE: Remove from quadtree ONCE at death ---
+        self.quadtree.remove(creature)
         if isinstance(creature, Plant):
             self.plant_deaths_this_period += 1
         elif isinstance(creature, Animal):
             self.animal_deaths_this_period += 1
 
+    def update_creature_in_quadtree(self, creature):
+        """Removes and re-inserts a creature to update its position in the quadtree."""
+        self.quadtree.remove(creature)
+        self.quadtree.insert(creature)
+
     def update(self, delta_time):
         if delta_time == 0: return
         
-        self.spatial_update_accumulator += delta_time
-        if self.spatial_update_accumulator >= C.SPATIAL_UPDATE_INTERVAL_SECONDS:
-            self._rebuild_spatial_partition()
-            self.spatial_update_accumulator = 0.0
-
         # --- Scheduled Plant Logic ---
         plant_time_key = int(self.time_manager.total_sim_seconds / C.PLANT_LOGIC_UPDATE_INTERVAL_SECONDS) * C.PLANT_LOGIC_UPDATE_INTERVAL_SECONDS
         if plant_time_key in self.plant_update_schedule:
@@ -160,7 +155,7 @@ class World:
                     if plant.is_alive: # Check again in case it died during its update
                         self.schedule_plant_update(plant, C.PLANT_LOGIC_UPDATE_INTERVAL_SECONDS)
 
-        # --- NEW: Scheduled Animal Logic ---
+        # --- Scheduled Animal Logic ---
         animal_time_key = int(self.time_manager.total_sim_seconds / C.ANIMAL_UPDATE_TICK_SECONDS) * C.ANIMAL_UPDATE_TICK_SECONDS
         if animal_time_key in self.animal_update_schedule:
             animals_to_update = self.animal_update_schedule.pop(animal_time_key)
@@ -170,8 +165,7 @@ class World:
                     if animal.is_alive:
                         self.schedule_animal_update(animal, C.ANIMAL_UPDATE_TICK_SECONDS)
 
-        # --- Housekeeping (Now MUCH more efficient) ---
-        # --- CHANGE: Process the graveyard instead of list comprehensions ---
+        # --- Housekeeping ---
         for dead_creature in self.graveyard:
             if isinstance(dead_creature, Plant):
                 self.plants.remove(dead_creature)
@@ -185,6 +179,8 @@ class World:
                 self.plants.append(creature)
             elif isinstance(creature, Animal):
                 self.animals.append(creature)
+            # --- CHANGE: Insert newborn into quadtree here ---
+            self.quadtree.insert(creature)
         self.newborns.clear()
 
         # --- Population Statistics Logging ---

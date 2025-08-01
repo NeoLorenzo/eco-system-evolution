@@ -63,6 +63,27 @@ class QuadTree:
             if self.southeast.insert(point): return True
             if self.southwest.insert(point): return True
 
+    def remove(self, point):
+        """Removes a point from the quadtree. Returns True if successful."""
+        if not self.boundary.contains(point):
+            return False
+
+        # Try to remove the point from this node's list
+        # We check by object identity ('is') because it's faster and we store references.
+        for i, p in enumerate(self.points):
+            if p is point:
+                self.points.pop(i)
+                return True
+
+        # If we have children, delegate the removal to them
+        if self.divided:
+            if self.northeast.remove(point): return True
+            if self.northwest.remove(point): return True
+            if self.southeast.remove(point): return True
+            if self.southwest.remove(point): return True
+        
+        return False # Point was not found
+
     def query(self, range_rect, found):
         """Queries for points within a given range."""
         if not self.boundary.intersects(range_rect):

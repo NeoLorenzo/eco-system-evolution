@@ -262,6 +262,9 @@ class Animal(Creature):
         if self.energy <= 0:
             self.die(world, "starvation")
             return
+        
+        # --- CHANGE: Track if the animal moved this tick ---
+        moved = False
 
         if self.can_reproduce():
             # Note: Animal reproduction logic is simple and doesn't create newborns yet.
@@ -291,6 +294,7 @@ class Animal(Creature):
                 else:
                     self.x += (direction_x / distance) * move_dist
                     self.y += (direction_y / distance) * move_dist
+                moved = True # The animal moved
             else:
                 # Random wandering
                 move_x = random.uniform(-1, 1)
@@ -300,6 +304,11 @@ class Animal(Creature):
                     move_dist = C.ANIMAL_SPEED_CM_PER_SEC * time_step
                     self.x += (move_x / norm) * move_dist
                     self.y += (move_y / norm) * move_dist
+                    moved = True # The animal moved
+
+    # --- CHANGE: If the animal moved, tell the world to update the quadtree ---
+        if moved:
+            world.update_creature_in_quadtree(self)
 
     def draw(self, screen, camera):
         screen_pos = camera.world_to_screen(self.x, self.y)
