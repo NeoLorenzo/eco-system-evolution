@@ -6,27 +6,29 @@ import pstats
 import constants as C
 from world import World
 from ui import draw_loading_screen
+import logger
 
 def initialize_simulation():
-    print("Attempting to initialize Pygame...")
+    logger.log("Attempting to initialize Pygame...")
     pygame.init()
-    print("Pygame initialized successfully.")
-    print(f"Creating display surface with width: {C.SCREEN_WIDTH} and height: {C.SCREEN_HEIGHT}")
+    logger.log("Pygame initialized successfully.")
+    logger.log(f"Creating display surface with width: {C.SCREEN_WIDTH} and height: {C.SCREEN_HEIGHT}") # <--- CHANGE THIS
     screen = pygame.display.set_mode((C.SCREEN_WIDTH, C.SCREEN_HEIGHT))
     pygame.display.set_caption("Eco-System Evolution")
     font = pygame.font.Font(None, C.UI_FONT_SIZE)
-    print("Display surface and font created.")
+    logger.log("Display surface and font created.")
     return screen, font
 
 def run_simulation():
     screen, font = initialize_simulation()
     clock = pygame.time.Clock()
     world = World()
+    logger.set_time_manager(world.time_manager)
     world.populate_world()
     world.pre_generate_all_chunks(screen, font)
 
-    print("Starting main simulation loop...")
-    print("CONTROLS: [SPACE] to Pause, [0-4] to set Speed, [V] to cycle Views.")
+    logger.log("Starting main simulation loop...")
+    logger.log("CONTROLS: [SPACE] to Pause, [0-4] to set Speed, [V] to cycle Views.")
     
     time_accumulator = 0.0
     
@@ -78,19 +80,18 @@ def run_simulation():
 
         pygame.display.flip()
 
-    print("Main simulation loop ended.")
+    logger.log("Main simulation loop ended.")
 
 def shutdown_simulation():
-    print("Quitting Pygame...")
+    logger.log("Quitting Pygame...")
     pygame.quit()
-    print("Simulation ended cleanly.")
+    logger.log("Simulation ended cleanly.")
 
-# --- NEW: Create a main function to be profiled ---
 def main():
-    print("--- Simulation Start ---")
+    logger.log("--- Simulation Start ---")
     run_simulation()
     shutdown_simulation()
-    print("--- Simulation Exit ---")
+    logger.log("--- Simulation Exit ---")
 
 if __name__ == '__main__':
     # --- NEW: Profiler execution block ---
@@ -106,4 +107,4 @@ if __name__ == '__main__':
         # Sort the stats by the cumulative time spent in each function
         stats.sort_stats(pstats.SortKey.CUMULATIVE)
         # Print the top 15 results
-        stats.print_stats(C.PROFILER_PRINT_TOP_N)
+        stats.print_stats(C.PROFILER_PRINT_LINE_COUNT)

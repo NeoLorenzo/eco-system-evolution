@@ -8,10 +8,11 @@ from environment import Environment
 from ui import draw_loading_screen
 from quadtree import QuadTree, Rectangle
 from time_manager import TimeManager
+import logger as log
 
 class World:
     def __init__(self):
-        print("Creating a new World...")
+        log.log("Creating a new World...")
         self.camera = Camera()
         self.environment = Environment()
         self.plants = []
@@ -26,10 +27,11 @@ class World:
         # --- NEW: Add a tracker for the debug-focused creature ---
         self.debug_focused_creature_id = None
         
-        self.last_log_time = 0.0
+        self.last_log_time_seconds = 0.0 # RENAME for clarity
         self.plant_deaths_this_period = 0
         self.animal_deaths_this_period = 0
-        print("World created. Creature lists are empty.")
+        self.plant_births_this_period = 0
+        log.log("World created. Creature lists are empty.")
 
     def _rebuild_spatial_partition(self):
         """Creates a new quadtree and inserts all living creatures."""
@@ -41,7 +43,7 @@ class World:
 
     def pre_generate_all_chunks(self, screen, font):
         """Generates all chunks for ALL view modes (Terrain, Temp, Humidity)."""
-        print("Starting world pre-generation for all view modes...")
+        log.log("Starting world pre-generation for all view modes...")
         total_chunks_x = int(C.WORLD_WIDTH_CM // C.CHUNK_SIZE_CM)
         total_chunks_y = int(C.WORLD_HEIGHT_CM // C.CHUNK_SIZE_CM)
         
@@ -82,20 +84,22 @@ class World:
         # IMPORTANT: Switch back to the default view mode ('terrain')
         self.environment.toggle_view_mode() 
         
-        print(f"World pre-generation complete. {work_done} total chunk textures loaded.")
+        log.log(f"World pre-generation complete. {work_done} total chunk textures loaded.")
 
     def populate_world(self):
-        print("Populating the world with initial creatures...")
+        log.log("Populating the world with initial creatures...")
         # Pass 'self' (the world instance) to the Plant constructor
         initial_plant = Plant(self, C.INITIAL_PLANT_POSITION[0], C.INITIAL_PLANT_POSITION[1])
         self.plants.append(initial_plant)
         # We can do the same for Animal later if we optimize it
         initial_animal = Animal(C.INITIAL_ANIMAL_POSITION[0], C.INITIAL_ANIMAL_POSITION[1])
         self.animals.append(initial_animal)
-        print("World population complete.")
+        log.log("World population complete.")
 
     def add_newborn(self, creature):
         self.newborns.append(creature)
+        if isinstance(creature, Plant):
+            self.plant_births_this_period += 1
 
     def report_death(self, creature):
         """A creature calls this method when it dies to be counted."""
@@ -129,13 +133,21 @@ class World:
         for animal in dead_animals:
             self.animals.remove(animal)
 
-        # Add newborns (this is already efficient)
         for creature in self.newborns:
             if isinstance(creature, Plant):
                 self.plants.append(creature)
             elif isinstance(creature, Animal):
                 self.animals.append(creature)
         self.newborns.clear()
+
+        # --- NEW: Population Statistics Logging ---
+        if self.time_manager.total_sim_seconds - self.last_log_time_seconds >= C.UI_LOG_INTERVAL_SECONDS:
+            self._print_population_statistics()
+            self.last_log_time_seconds = self.time_manager.total_sim_seconds
+            # Reset counters for the next period
+            self.plant_births_this_period = 0
+            self.plant_deaths_this_period = 0
+            self.animal_deaths_this_period = 0
 
     def toggle_environment_view(self):
         self.environment.toggle_view_mode()
@@ -157,15 +169,28 @@ class World:
         for plant in self.plants:
             dist_sq = (world_x - plant.x)**2 + (world_y - plant.y)**2
             if dist_sq <= plant.radius**2:
-                print(f"Clicked on a plant at world coordinates ({int(plant.x)}, {int(plant.y)}).")
+                log.log(f"Clicked on a plant at world coordinates ({int(plant.x)}, {int(plant.y)}).")
                 
                 # --- NEW: Toggle focused debug logging ---
                 if self.debug_focused_creature_id == plant.id:
                     self.debug_focused_creature_id = None
-                    print(f"DEBUG: Stopped focusing on Plant ID: {plant.id}. Detailed logs disabled.")
+                    log.log(f"DEBUG: Stopped focusing on Plant ID: {plant.id}. Detailed logs disabled.")
                 else:
                     self.debug_focused_creature_id = plant.id
-                    print(f"DEBUG: Now focusing on Plant ID: {plant.id}. Detailed logs enabled.")
+                    log.log(f"DEBUG: Now focusing on Plant ID: {plant.id}. Detailed logs enabled.")
 
                 plant.print_debug_report()
                 return
+            
+    def _print_population_statistics(self):
+        """Prints a formatted summary of the world's population statistics."""
+        current_day = self.time_manager.total_sim_seconds / C.SECONDS_PER_DAY
+        log_period_days = C.UI_LOG_INTERVAL_SECONDS / C.SECONDS_PER_DAY
+        
+        log.log("\n--- Population Statistics ---")
+        log.log(f"  > Report for Day {current_day:.1f} (covering the last {log_period_days:.1f} days)")
+        log.log(f"  Living Plants: {len(self.plants):,}")
+        log.log(f"  Living Animals: {len(self.animals):,}")
+        log.log(f"  - Plant Births this Period: {self.plant_births_this_period:,}")
+        log.log(f"  - Plant Deaths this Period: {self.plant_deaths_this_period:,}")
+        log.log("---------------------------\n")

@@ -1,6 +1,7 @@
 #time_manager.py
 
 import constants as C
+import logger as log
 
 class TimeManager:
     def __init__(self):
@@ -21,13 +22,13 @@ class TimeManager:
 
     def toggle_pause(self):
         self.is_paused = not self.is_paused
-        print(f"Event: Simulation {'paused' if self.is_paused else 'resumed'}.")
+        log.log(f"Event: Simulation {'paused' if self.is_paused else 'resumed'}.")
 
     def set_speed(self, level):
         if level in C.TIME_MULTIPLIERS:
             self.time_multiplier_level = level
             self.current_multiplier = C.TIME_MULTIPLIERS[level]
-            print(f"Event: Simulation speed set to level {level} (x{self.current_multiplier}).")
+            log.log(f"Event: Simulation speed set to level {level} (x{self.current_multiplier}).")
 
     def get_display_string(self):
         days = int(self.total_sim_seconds // C.SECONDS_PER_DAY)

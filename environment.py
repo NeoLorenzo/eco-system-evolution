@@ -5,6 +5,7 @@ import numpy as np
 import noise
 import constants as C
 from numpy_noise import perlin_noise_2d
+import logger as log
 
 class Environment:
     def __init__(self):
@@ -20,7 +21,7 @@ class Environment:
         np.random.shuffle(p)
         self.p = np.stack([p, p]).flatten() # Store the flattened table
 
-        print(f"Environment initialized with multi-cache rendering. Default view: {self.view_mode}")
+        log.log(f"Environment initialized with multi-cache rendering. Default view: {self.view_mode}")
     
     def get_temperature(self, x, y):
         """Calculates the temperature at a single world coordinate using the consistent NumPy noise."""
@@ -159,7 +160,7 @@ class Environment:
         if self.view_mode == "terrain": self.view_mode = "temperature"
         elif self.view_mode == "temperature": self.view_mode = "humidity"
         else: self.view_mode = "terrain"
-        print(f"Event: View switched to '{self.view_mode}'.")
+        log.log(f"Event: View switched to '{self.view_mode}'.")
 
     def generate_chunk_if_needed(self, chunk_x, chunk_y):
         """Generates a chunk for the CURRENT view mode if it's not in its specific cache."""

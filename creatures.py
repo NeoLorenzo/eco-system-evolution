@@ -6,6 +6,7 @@ import random
 import math
 from quadtree import Rectangle
 from genes import PlantGenes
+import logger as log
 
 def lerp_color(c1, c2, t):
     t = max(0, min(1, t))
@@ -19,11 +20,11 @@ class Creature:
         self.age = 0
         self.is_alive = True
         self.id = random.randint(C.CREATURE_ID_MIN, C.CREATURE_ID_MAX)
-        print(f"DEBUG: Creature {self.id} created at ({x:.0f}, {y:.0f}). Initial Energy: {self.energy}")
+        log.log(f"DEBUG: Creature {self.id} created at ({x:.0f}, {y:.0f}). Initial Energy: {self.energy}")
 
     def die(self, world, cause):
         if self.is_alive:
-            print(f"DEBUG: Creature {self.id} is dying from: {cause}")
+            log.log(f"DEBUG: Creature {self.id} is dying from: {cause}")
             self.is_alive = False
             world.report_death(self)
 
@@ -31,7 +32,7 @@ class Creature:
         return self.energy >= C.CREATURE_REPRODUCTION_ENERGY_THRESHOLD
 
     def reproduce(self, world, quadtree):
-        print(f"DEBUG ({self.id}): Attempting to reproduce.")
+        log.log(f"DEBUG ({self.id}): Attempting to reproduce.")
         self.energy -= C.CREATURE_REPRODUCTION_ENERGY_COST
         spread_area = Rectangle(self.x, self.y, C.PLANT_SEED_SPREAD_RADIUS_CM, C.PLANT_SEED_SPREAD_RADIUS_CM)
         neighbors_in_spread_area = quadtree.query(spread_area, [])
@@ -62,17 +63,17 @@ class Creature:
                 best_location = (candidate_x, candidate_y)
 
         if best_location:
-            print(f"DEBUG ({self.id}): Found a valid spawn location.")
+            log.log(f"DEBUG ({self.id}): Found a valid spawn location.")
             return Plant(world, best_location[0], best_location[1])
         
-        print(f"DEBUG ({self.id}): Failed to find a valid spawn location.")
+        log.log(f"DEBUG ({self.id}): Failed to find a valid spawn location.")
         self.energy += C.CREATURE_REPRODUCTION_ENERGY_COST
         return None
 
 class Plant(Creature):
     def __init__(self, world, x, y):
         super().__init__(x, y)
-        print(f"DEBUG ({self.id}): Initializing as a Plant.")
+        log.log(f"DEBUG ({self.id}): Initializing as a Plant.")
         self.genes = PlantGenes()
         self.radius = C.PLANT_INITIAL_RADIUS_CM
         self.root_radius = C.PLANT_INITIAL_ROOT_RADIUS_CM
@@ -84,10 +85,10 @@ class Plant(Creature):
 
         self.elevation = world.environment.get_elevation(self.x, self.y)
         self.soil_type = self.get_soil_type(self.elevation)
-        print(f"DEBUG ({self.id}): Environment check: Elevation={self.elevation:.2f}, Soil='{self.soil_type}'")
+        log.log(f"DEBUG ({self.id}): Environment check: Elevation={self.elevation:.2f}, Soil='{self.soil_type}'")
         
         if self.soil_type is None:
-            print(f"DEBUG ({self.id}): Spawning on invalid terrain. Marking for death.")
+            log.log(f"DEBUG ({self.id}): Spawning on invalid terrain. Marking for death.")
             self.is_alive = False
             self.energy = 0
             return
@@ -95,7 +96,7 @@ class Plant(Creature):
         self.temperature = world.environment.get_temperature(self.x, self.y)
         self.humidity = world.environment.get_humidity(self.x, self.y)
         self.environment_eff = self.calculate_environment_efficiency(self.temperature, self.humidity)
-        print(f"DEBUG ({self.id}): Caching env_eff: {self.environment_eff:.3f}")
+        log.log(f"DEBUG ({self.id}): Caching env_eff: {self.environment_eff:.3f}")
 
     def get_core_radius(self):
         return self.radius * self.genes.core_radius_factor
@@ -128,94 +129,86 @@ class Plant(Creature):
         if self.logic_update_accumulator < C.PLANT_LOGIC_UPDATE_INTERVAL_SECONDS:
             return
         
-        ticks_to_process = int(self.logic_update_accumulator // C.PLANT_LOGIC_UPDATE_INTERVAL_SECONDS)
-        
-        # --- NEW: Check if this plant is the debug focus ---
+        time_to_process = self.logic_update_accumulator
+        self.logic_update_accumulator = 0.0
+
         is_debug_focused = (world.debug_focused_creature_id == self.id)
 
-        # --- MODIFIED: Only print if focused ---
         if is_debug_focused:
-            print(f"\n--- PLANT {self.id} LOGIC (Age: {self.age/C.SECONDS_PER_DAY:.1f} days) ---")
-            print(f"  Accumulator: {self.logic_update_accumulator:.2f}s. Processing {ticks_to_process} tick(s) of {C.PLANT_LOGIC_UPDATE_INTERVAL_SECONDS}s each.")
+            log.log(f"\n--- PLANT {self.id} LOGIC (Age: {self.age/C.SECONDS_PER_DAY:.1f} days) ---")
+            log.log(f"  Processing a single consolidated tick of {time_to_process:.2f}s.")
+            log.log(f"    State: Energy={self.energy:.2f}, Radius={self.radius:.2f}")
 
-        for i in range(ticks_to_process):
-            internal_tick = C.PLANT_LOGIC_UPDATE_INTERVAL_SECONDS
-            
-            # --- MODIFIED: Only print if focused ---
-            if is_debug_focused and i < 3:
-                 print(f"\n  - Internal Tick {i+1}/{ticks_to_process} (Duration: {internal_tick:.0f}s) -")
-                 print(f"    State: Energy={self.energy:.2f}, Radius={self.radius:.2f}")
+        # --- Store cooldown state BEFORE the tick ---
+        was_ready_to_reproduce = self.reproduction_cooldown <= 0
 
-            # --- CORE BIOLOGY LOGIC (Calculations now use the fixed 'internal_tick') ---
-            self.reproduction_cooldown = max(0, self.reproduction_cooldown - internal_tick)
-            self.competition_update_accumulator += internal_tick
-            
-            if self.energy <= 0:
-                self.die(world, "starvation")
-                self.logic_update_accumulator -= internal_tick * (i + 1)
-                # --- MODIFIED: Only print if focused ---
-                if is_debug_focused:
-                    print(f"  Plant {self.id} died mid-processing. Halting logic.")
-                return
-
-            if self.competition_update_accumulator >= C.PLANT_COMPETITION_UPDATE_INTERVAL_SECONDS:
-                self.competition_factor = self.calculate_competition_factor(world.quadtree)
-                self.competition_update_accumulator = 0.0
-
-            max_soil_eff = self.genes.soil_efficiency.get(self.soil_type, 0)
-            root_to_canopy_ratio = self.root_radius / (self.radius + 1)
-            soil_eff = max_soil_eff * min(1.0, root_to_canopy_ratio * C.PLANT_ROOT_EFFICIENCY_FACTOR)
-            aging_efficiency = math.exp(-(self.age / C.PLANT_SENESCENCE_TIMESCALE_SECONDS))
-            canopy_area = math.pi * self.radius**2
-            root_area = math.pi * self.root_radius**2
-            photosynthesis_gain = canopy_area * C.PLANT_PHOTOSYNTHESIS_PER_AREA * self.environment_eff * soil_eff * self.competition_factor * aging_efficiency * internal_tick
-            metabolism_cost = (canopy_area + root_area) * C.PLANT_METABOLISM_PER_AREA * self.environment_eff * internal_tick
-            net_energy_production = photosynthesis_gain - metabolism_cost
-            self.energy += net_energy_production
-            
-            if is_debug_focused and i < 3:
-                print(f"    Aging Efficiency: {aging_efficiency:.3f}") # DEBUG LOG
-                print(f"    Energy: Gained={photosynthesis_gain:.4f}, Lost={metabolism_cost:.4f}, Net={net_energy_production:.4f}")
-
-            # --- NEW LOGIC: Reproduction and Growth are now independent actions ---
-
-            # 1. REPRODUCTION: Check if the plant has enough *stored energy* to reproduce.
-            if self.can_reproduce() and self.reproduction_cooldown <= 0 and not self.is_overcrowded(world.quadtree):
-                new_plant = self.reproduce(world, world.quadtree)
-                if new_plant:
-                    world.add_newborn(new_plant)
-                    self.reproduction_cooldown = C.PLANT_REPRODUCTION_COOLDOWN_SECONDS
-            
-            # 2. GROWTH: Check if the plant had a *net positive energy gain* in this tick to grow.
-            if net_energy_production > 0:
-                # --- MODIFIED: Only print if focused ---
-                if is_debug_focused and i < 3: print(f"    Growth Check (Surplus of {net_energy_production:.4f} J):")
-                added_biomass_area = net_energy_production / C.PLANT_BIOMASS_ENERGY_COST
-                if is_debug_focused and i < 3: print(f"      - Surplus converts to {added_biomass_area:.4f} cm^2 of new biomass.")
-
-                grows_canopy = (soil_eff >= self.environment_eff)
-                if grows_canopy:
-                    if is_debug_focused and i < 3: print(f"      - Decision: Growing CANOPY. Old Radius: {self.radius:.4f}")
-                    new_canopy_area = canopy_area + added_biomass_area
-                    self.radius = math.sqrt(new_canopy_area / math.pi)
-                    if is_debug_focused and i < 3: print(f"      - New Radius: {self.radius:.4f}")
-                else:
-                    if is_debug_focused and i < 3: print(f"      - Decision: Growing ROOTS. Old Root Radius: {self.root_radius:.4f}")
-                    new_root_area = root_area + added_biomass_area
-                    self.root_radius = math.sqrt(new_root_area / math.pi)
-                    if is_debug_focused and i < 3: print(f"      - New Root Radius: {self.root_radius:.4f}")
-            
-            elif is_debug_focused and i < 3:
-                print(f"    Growth Check (Deficit of {net_energy_production:.4f} J):")
-                print(f"      - Decision: CANNOT GROW.")
+        # --- CORE BIOLOGY LOGIC (Consolidated Calculation) ---
+        self.reproduction_cooldown = max(0, self.reproduction_cooldown - time_to_process)
+        self.competition_update_accumulator += time_to_process
         
-        total_time_processed = internal_tick * ticks_to_process
-        self.logic_update_accumulator -= total_time_processed
+        if self.competition_update_accumulator >= C.PLANT_COMPETITION_UPDATE_INTERVAL_SECONDS:
+            self.competition_factor = self.calculate_competition_factor(world.quadtree)
+            self.competition_update_accumulator %= C.PLANT_COMPETITION_UPDATE_INTERVAL_SECONDS
+
+        max_soil_eff = self.genes.soil_efficiency.get(self.soil_type, 0)
+        root_to_canopy_ratio = self.root_radius / (self.radius + 1)
+        soil_eff = max_soil_eff * min(1.0, root_to_canopy_ratio * C.PLANT_ROOT_EFFICIENCY_FACTOR)
+        aging_efficiency = math.exp(-(self.age / C.PLANT_SENESCENCE_TIMESCALE_SECONDS))
         
-        # --- MODIFIED: Only print if focused ---
+        canopy_area = math.pi * self.radius**2
+        root_area = math.pi * self.root_radius**2
+
+        photosynthesis_gain = canopy_area * C.PLANT_PHOTOSYNTHESIS_PER_AREA * self.environment_eff * soil_eff * self.competition_factor * aging_efficiency * time_to_process
+        metabolism_cost = (canopy_area + root_area) * C.PLANT_METABOLISM_PER_AREA * self.environment_eff * time_to_process
+        net_energy_production = photosynthesis_gain - metabolism_cost
+        
+        self.energy += net_energy_production
+
         if is_debug_focused:
-            print(f"--- END LOGIC {self.id} --- Final Energy: {self.energy:.2f}, Radius: {self.radius:.2f}")
-            print(f"  Remaining in accumulator: {self.logic_update_accumulator:.2f}s")
+            log.log(f"    Efficiencies: Env={self.environment_eff:.3f}, Soil={soil_eff:.3f}, Aging={aging_efficiency:.3f}, Comp={self.competition_factor:.3f}")
+            log.log(f"    Energy: Gained={photosynthesis_gain:.4f}, Lost={metabolism_cost:.4f}, Net={net_energy_production:.4f}")
+
+        if self.energy <= 0:
+            self.die(world, "starvation")
+            if is_debug_focused:
+                log.log(f"  Plant {self.id} died from starvation. Final Energy: {self.energy:.2f}")
+            return
+
+        # --- NEW, CORRECTED REPRODUCTION LOGIC ---
+        # A plant can only reproduce if its cooldown was ALREADY finished before this tick began.
+        # This prevents it from using the massive time_to_process to instantly reset its own cooldown.
+        if was_ready_to_reproduce and self.can_reproduce() and not self.is_overcrowded(world.quadtree):
+            if is_debug_focused: log.log("    Reproduction Check: Was ready, has energy. Attempting to spawn.")
+            new_plant = self.reproduce(world, world.quadtree)
+            if new_plant:
+                world.add_newborn(new_plant)
+                # The cooldown is now set to its full duration. It will have to wait for
+                # future ticks to reduce this again.
+                self.reproduction_cooldown = C.PLANT_REPRODUCTION_COOLDOWN_SECONDS
+        
+        if net_energy_production > 0:
+            if is_debug_focused: log.log(f"    Growth Check (Surplus of {net_energy_production:.4f} J):")
+            added_biomass_area = net_energy_production / C.PLANT_BIOMASS_ENERGY_COST
+            if is_debug_focused: log.log(f"      - Surplus converts to {added_biomass_area:.4f} cm^2 of new biomass.")
+
+            grows_canopy = (soil_eff >= self.environment_eff)
+            if grows_canopy:
+                if is_debug_focused: log.log(f"      - Decision: Growing CANOPY. Old Radius: {self.radius:.4f}")
+                new_canopy_area = canopy_area + added_biomass_area
+                self.radius = math.sqrt(new_canopy_area / math.pi)
+                if is_debug_focused: log.log(f"      - New Radius: {self.radius:.4f}")
+            else:
+                if is_debug_focused: log.log(f"      - Decision: Growing ROOTS. Old Root Radius: {self.root_radius:.4f}")
+                new_root_area = root_area + added_biomass_area
+                self.root_radius = math.sqrt(new_root_area / math.pi)
+                if is_debug_focused: log.log(f"      - New Root Radius: {self.root_radius:.4f}")
+        
+        elif is_debug_focused:
+            log.log(f"    Growth Check (Deficit of {net_energy_production:.4f} J):")
+            log.log(f"      - Decision: CANNOT GROW.")
+        
+        if is_debug_focused:
+            log.log(f"--- END LOGIC {self.id} --- Final Energy: {self.energy:.2f}, Radius: {self.radius:.2f}")
 
     # ... (rest of Plant class is unchanged) ...
     def is_overcrowded(self, quadtree):
@@ -242,20 +235,6 @@ class Plant(Creature):
         core_radius = camera.scale(self.get_core_radius())
         if core_radius >= 1:
             pygame.draw.circle(screen, C.COLOR_PLANT_CORE, screen_pos, core_radius)
-
-    def print_debug_report(self):
-        days_old = self.age / C.SECONDS_PER_DAY
-        print("\n--- PLANT ON-CLICK DEBUG REPORT ---")
-        print(f"  Creature ID: {self.id}")
-        print(f"  Age: {days_old:.2f} simulation days ({self.age:.0f} seconds)")
-        print(f"  - Canopy Radius: {self.radius:.2f} cm")
-        print(f"  - Root Radius:   {self.root_radius:.2f} cm")
-        repro_progress = (self.energy / C.CREATURE_REPRODUCTION_ENERGY_THRESHOLD) * 100
-        print(f"  Reproduction Energy: {'Ready' if self.can_reproduce() else 'Saving'} ({repro_progress:.1f}%)")
-        print(f"  - Stored Energy: {self.energy:.2f} J")
-        print(f"  - Needed to Reproduce: {C.CREATURE_REPRODUCTION_ENERGY_THRESHOLD:.2f} J")
-        print(f"  - Reproduction Cooldown: {self.reproduction_cooldown:.2f}s")
-        print("-------------------------------------\n")
 
 class Animal(Creature):
     # ... (Animal class is unchanged) ...
