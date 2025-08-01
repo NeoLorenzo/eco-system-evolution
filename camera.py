@@ -1,5 +1,3 @@
-#camera.py
-
 import pygame
 import constants as C
 
@@ -9,6 +7,8 @@ class Camera:
         self.y = C.WORLD_HEIGHT_CM / 2
         self.zoom = 1.0
         self.dirty = True
+        # --- NEW: A flag to specifically track zoom changes for rendering optimization. ---
+        self.zoom_changed = True 
         print(f"Camera initialized at world coordinates ({self.x:.0f}, {self.y:.0f}) with zoom {self.zoom:.2f}")
 
     def world_to_screen(self, world_x, world_y):
@@ -30,15 +30,12 @@ class Camera:
         self.x += dx / self.zoom
         self.y += dy / self.zoom
 
-        # Calculate the visible half-width and half-height in world coordinates
         visible_half_width = (C.SCREEN_WIDTH / 2) / self.zoom
         visible_half_height = (C.SCREEN_HEIGHT / 2) / self.zoom
 
-        # Clamp X coordinate
         self.x = max(visible_half_width, self.x)
         self.x = min(C.WORLD_WIDTH_CM - visible_half_width, self.x)
 
-        # Clamp Y coordinate
         self.y = max(visible_half_height, self.y)
         self.y = min(C.WORLD_HEIGHT_CM - visible_half_height, self.y)
 
@@ -47,14 +44,18 @@ class Camera:
     def zoom_in(self):
         """Zooms in, clamping to a maximum zoom level."""
         self.zoom *= (1 + C.CAMERA_ZOOM_SPEED)
-        self.zoom = min(self.zoom, C.CAMERA_MAX_ZOOM) # Clamp to max zoom
+        self.zoom = min(self.zoom, C.CAMERA_MAX_ZOOM)
         self.dirty = True
+        # --- NEW: Set the zoom changed flag ---
+        self.zoom_changed = True
 
     def zoom_out(self):
         """Zooms out, clamping to a minimum zoom level."""
         self.zoom *= (1 - C.CAMERA_ZOOM_SPEED)
-        self.zoom = max(self.zoom, C.CAMERA_MIN_ZOOM) # Clamp to min zoom
+        self.zoom = max(self.zoom, C.CAMERA_MIN_ZOOM)
         self.dirty = True
+        # --- NEW: Set the zoom changed flag ---
+        self.zoom_changed = True
 
     def draw_world_border(self, screen):
         start_x, start_y = self.world_to_screen(0, 0)
