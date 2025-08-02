@@ -123,6 +123,9 @@ class World:
 
     def add_newborn(self, creature):
         self.newborns.append(creature)
+        # --- CHANGE: Insert into quadtree IMMEDIATELY for correct interaction checks. ---
+        self.quadtree.insert(creature)
+        
         if isinstance(creature, Plant):
             self.plant_births_this_period += 1
             self.schedule_plant_update(creature, C.PLANT_LOGIC_UPDATE_INTERVAL_SECONDS)
@@ -144,35 +147,14 @@ class World:
         self.quadtree.remove(creature)
         self.quadtree.insert(creature)
 
-    def update(self, delta_time):
-        if delta_time == 0: return
-        
-        # --- Scheduled Plant Logic ---
-        plant_time_key = int(self.time_manager.total_sim_seconds / C.PLANT_LOGIC_UPDATE_INTERVAL_SECONDS) * C.PLANT_LOGIC_UPDATE_INTERVAL_SECONDS
-        if plant_time_key in self.plant_update_schedule:
-            plants_to_update = self.plant_update_schedule.pop(plant_time_key)
-            for plant in plants_to_update:
-                if plant.is_alive:
-                    plant.update(self, C.PLANT_LOGIC_UPDATE_INTERVAL_SECONDS)
-                    if plant.is_alive: # Check again in case it died during its update
-                        self.schedule_plant_update(plant, C.PLANT_LOGIC_UPDATE_INTERVAL_SECONDS)
-
-        # --- Scheduled Animal Logic ---
-        animal_time_key = int(self.time_manager.total_sim_seconds / C.ANIMAL_UPDATE_TICK_SECONDS) * C.ANIMAL_UPDATE_TICK_SECONDS
-        if animal_time_key in self.animal_update_schedule:
-            animals_to_update = self.animal_update_schedule.pop(animal_time_key)
-            for animal in animals_to_update:
-                if animal.is_alive:
-                    animal.update(self, C.ANIMAL_UPDATE_TICK_SECONDS)
-                    if animal.is_alive:
-                        self.schedule_animal_update(animal, C.ANIMAL_UPDATE_TICK_SECONDS)
-
+    def _process_housekeeping(self):
+        """Handles adding newborns to the main lists and removing dead creatures."""
         # --- Housekeeping ---
         for dead_creature in self.graveyard:
             if isinstance(dead_creature, Plant):
-                self.plants.remove(dead_creature)
+                if dead_creature in self.plants: self.plants.remove(dead_creature)
             elif isinstance(dead_creature, Animal):
-                self.animals.remove(dead_creature)
+                if dead_creature in self.animals: self.animals.remove(dead_creature)
         self.graveyard.clear()
 
         # Process newborns
@@ -181,8 +163,7 @@ class World:
                 self.plants.append(creature)
             elif isinstance(creature, Animal):
                 self.animals.append(creature)
-            # --- CHANGE: Insert newborn into quadtree here ---
-            self.quadtree.insert(creature)
+            # Note: The quadtree insertion is now done in add_newborn()
         self.newborns.clear()
 
         # --- Population Statistics Logging ---
@@ -192,6 +173,55 @@ class World:
             self.plant_births_this_period = 0
             self.plant_deaths_this_period = 0
             self.animal_deaths_this_period = 0
+
+    def update_in_bulk(self, large_delta_time):
+        """
+        Processes all scheduled events within a large time window efficiently.
+        This is the new main entry point for simulation logic from main.py.
+        """
+        start_time = self.time_manager.total_sim_seconds
+        end_time = start_time + large_delta_time
+
+        # --- Step 1: Gather all events within the time window ---
+        events = {}
+        
+        # Gather plant events
+        plant_keys_to_process = [t for t in self.plant_update_schedule.keys() if start_time <= t < end_time]
+        for t in plant_keys_to_process:
+            if t not in events: events[t] = []
+            events[t].extend(self.plant_update_schedule.pop(t))
+
+        # Gather animal events
+        animal_keys_to_process = [t for t in self.animal_update_schedule.keys() if start_time <= t < end_time]
+        for t in animal_keys_to_process:
+            if t not in events: events[t] = []
+            events[t].extend(self.animal_update_schedule.pop(t))
+
+        # --- Step 2: Process events in strict chronological order ---
+        sorted_event_times = sorted(events.keys())
+
+        for event_time in sorted_event_times:
+            # Set the world clock to the exact time of the current event
+            self.time_manager.total_sim_seconds = event_time
+            
+            creatures_to_update = events[event_time]
+            for creature in creatures_to_update:
+                if creature.is_alive:
+                    # Determine the correct time step for this creature's update
+                    if isinstance(creature, Plant):
+                        time_step = C.PLANT_LOGIC_UPDATE_INTERVAL_SECONDS
+                        creature.update(self, time_step)
+                        if creature.is_alive:
+                            self.schedule_plant_update(creature, time_step)
+                    elif isinstance(creature, Animal):
+                        time_step = C.ANIMAL_UPDATE_TICK_SECONDS
+                        creature.update(self, time_step)
+                        if creature.is_alive:
+                            self.schedule_animal_update(creature, time_step)
+
+        # --- Step 3: Finalize the time update and clean up ---
+        self.time_manager.total_sim_seconds = end_time
+        self._process_housekeeping()
 
     def toggle_environment_view(self):
         self.environment.toggle_view_mode()

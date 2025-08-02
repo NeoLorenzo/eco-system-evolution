@@ -30,8 +30,6 @@ def run_simulation():
     logger.log("Starting main simulation loop...")
     logger.log("CONTROLS: [SPACE] to Pause, [0-4] to set Speed, [V] to cycle Views.")
     
-    time_accumulator = 0.0
-    
     running = True
     while running:
         # --- Get Real Time ---
@@ -63,12 +61,8 @@ def run_simulation():
 
         # --- Simulation Logic (The "Update" part) ---
         scaled_delta_time = world.time_manager.get_scaled_delta_time(real_delta_seconds)
-        time_accumulator += scaled_delta_time
-        
-        while time_accumulator >= C.SIMULATION_TICK_INTERVAL_SECONDS:
-            world.update(C.SIMULATION_TICK_INTERVAL_SECONDS)
-            world.time_manager.update_total_time(C.SIMULATION_TICK_INTERVAL_SECONDS)
-            time_accumulator -= C.SIMULATION_TICK_INTERVAL_SECONDS
+        if scaled_delta_time > 0:
+            world.update_in_bulk(scaled_delta_time)
         
         # --- Drawing (The "Render" part) ---
         # This part now runs completely independently of the simulation logic loop.
