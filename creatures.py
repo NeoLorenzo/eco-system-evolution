@@ -67,8 +67,8 @@ class Creature:
             log.log(f"DEBUG ({self.id}): Found a valid spawn location.")
             return Plant(world, best_location[0], best_location[1])
         
-        log.log(f"DEBUG ({self.id}): Failed to find a valid spawn location.")
-        self.energy += C.CREATURE_REPRODUCTION_ENERGY_COST
+        log.log(f"DEBUG ({self.id}): Failed to find a valid spawn location. Reproductive energy was lost.")
+        # The energy cost is now a sunk cost and is NOT refunded.
         return None
 
 class Plant(Creature):
