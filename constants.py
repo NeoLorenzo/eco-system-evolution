@@ -147,8 +147,13 @@ PLANT_Q10_INTERVAL_DIVISOR = 0.2
 
 # --- Biomass Cost (Growth Cost) ---
 # Calculation: Energy Density of Biomass * Mass per Area of Growth
+# This now represents the cost to grow a 2D area, primarily for the root system.
 # Units: (J/kg) * (kg/m^2) / (cm^2/m^2) = J/cm^2
 PLANT_BIOMASS_ENERGY_COST = (BIOMASS_ENERGY_DENSITY_J_PER_KG * LEAF_MASS_PER_AREA_KG_PER_M2) / CM2_PER_M2
+
+# This represents the cost to grow a 3D volume of canopy. We assume a density to convert the area cost to a volume cost.
+# Unit: J/cm^3
+PLANT_CANOPY_BIOMASS_ENERGY_COST = PLANT_BIOMASS_ENERGY_COST # For now, we assume a 1cm thickness for cost conversion.
 
 # =============================================================================
 # --- CREATURES (GENERAL) ---
@@ -207,7 +212,13 @@ PLANT_LOGIC_UPDATE_INTERVAL_SECONDS = 3600.0 # (1 Hour)
 
 # --- Initial Properties & Size ---
 PLANT_INITIAL_RADIUS_CM = 10
+PLANT_INITIAL_HEIGHT_CM = 5 # A new plant starts short.
 PLANT_CORE_RADIUS_FACTOR = 0.25
+
+# --- NEW: Growth Allocation ---
+# The ratio of canopy growth energy invested in growing taller vs. wider.
+# 0.0 = all growth goes to radius; 1.0 = all growth goes to height.
+PLANT_HEIGHT_INVESTMENT_RATIO = 0.4
 
 # --- Reproduction & Spacing ---
 PLANT_MAX_NEIGHBORS = 5

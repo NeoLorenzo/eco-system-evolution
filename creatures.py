@@ -44,11 +44,12 @@ class Plant(Creature):
         super().__init__(x, y, initial_energy)
         log.log(f"DEBUG ({self.id}): Initializing as a Plant.")
         self.genes = PlantGenes()
-        self.radius = C.PLANT_INITIAL_RADIUS_CM  # Canopy radius, in centimeters (cm)
-        self.root_radius = C.PLANT_INITIAL_ROOT_RADIUS_CM  # Root system radius, in centimeters (cm)
+        self.radius = C.PLANT_INITIAL_RADIUS_CM # Canopy radius, in centimeters (cm)
+        self.height = C.PLANT_INITIAL_HEIGHT_CM # Canopy height, in centimeters (cm)
+        self.root_radius = C.PLANT_INITIAL_ROOT_RADIUS_CM # Root system radius, in centimeters (cm)
         self.reproductive_energy_stored = 0.0 # Energy invested in reproductive structures, in Joules (J)
-        self.competition_factor = 1.0  # Efficiency multiplier based on nearby plants, unitless [0, 1]
-        self.competition_update_accumulator = 0.0  # Time since last competition check, in seconds (s)
+        self.competition_factor = 1.0 # DEPRECATED, will be removed later.
+        self.competition_update_accumulator = 0.0 # Time since last competition check, in seconds (s)
         self.has_reached_self_sufficiency = False # Has the plant ever had a positive energy balance?
 
         self.elevation = world.environment.get_elevation(self.x, self.y)  # Cached elevation, unitless [0, 1]
@@ -102,16 +103,21 @@ class Plant(Creature):
         total_overlapped_root_area = 0
 
         # --- Canopy Competition (for light) ---
-        # Search a wider area to find all potential overlapping neighbors
         canopy_search_area = Rectangle(self.x, self.y, self.radius * 2, self.radius * 2)
         canopy_neighbors = quadtree.query(canopy_search_area, [])
         for neighbor in canopy_neighbors:
             if neighbor is self or not isinstance(neighbor, Plant): continue
+            
+            # --- NEW: Height-based competition rule ---
+            # If the neighbor is shorter or the same height, it cannot shade us. Skip it.
+            if self.height >= neighbor.height:
+                continue
+
             dist = math.sqrt((self.x - neighbor.x)**2 + (self.y - neighbor.y)**2)
             if dist < self.radius + neighbor.radius:
                 total_shaded_canopy_area += self._calculate_circle_intersection_area(dist, self.radius, neighbor.radius)
 
-        # --- Root Competition (for water/nutrients) ---
+        # --- Root Competition (for water/nutrients) - Unchanged by height ---
         root_search_area = Rectangle(self.x, self.y, self.root_radius * 2, self.root_radius * 2)
         root_neighbors = quadtree.query(root_search_area, [])
         for neighbor in root_neighbors:
@@ -139,7 +145,7 @@ class Plant(Creature):
         if is_debug_focused:
             log.log(f"\n--- PLANT {self.id} LOGIC (Age: {self.age/C.SECONDS_PER_DAY:.1f} days) ---")
             log.log(f"  Processing a single consolidated tick of {time_step:.2f}s.")
-            log.log(f"    State: Energy={self.energy:.2f}, ReproEnergy={self.reproductive_energy_stored:.2f}, Radius={self.radius:.2f}")
+            log.log(f"    State: Energy={self.energy:.2f}, ReproEnergy={self.reproductive_energy_stored:.2f}, Radius={self.radius:.2f}, Height={self.height:.2f}")
 
         # --- CORE BIOLOGY LOGIC (Calculations now use time_step directly) ---
         self.competition_update_accumulator += time_step
@@ -217,29 +223,49 @@ class Plant(Creature):
         
         # --- Growth Logic ---
         if growth_energy > 0:
-            total_added_biomass = growth_energy / C.PLANT_BIOMASS_ENERGY_COST
-            if is_debug_focused: log.log(f"      - Growth converts {growth_energy:.4f} J to {total_added_biomass:.4f} cm^2 of new biomass.")
+            if is_debug_focused: log.log(f"      - Growth investment of {growth_energy:.4f} J.")
 
             total_limitation = self.environment_eff + soil_eff
             if total_limitation > 0:
+                # Allocate overall energy between canopy (3D) and roots (2D)
                 canopy_alloc_factor = soil_eff / total_limitation
                 root_alloc_factor = self.environment_eff / total_limitation
-                added_canopy_area = total_added_biomass * canopy_alloc_factor
-                added_root_area = total_added_biomass * root_alloc_factor
                 
-                new_canopy_area = canopy_area + added_canopy_area
-                self.radius = math.sqrt(new_canopy_area / math.pi)
+                canopy_investment_energy = growth_energy * canopy_alloc_factor
+                root_investment_energy = growth_energy * root_alloc_factor
+
+                # --- 1. Grow Canopy (3D Volume) ---
+                added_canopy_volume = canopy_investment_energy / C.PLANT_CANOPY_BIOMASS_ENERGY_COST
                 
+                # Allocate canopy volume between height and radius
+                volume_for_height = added_canopy_volume * C.PLANT_HEIGHT_INVESTMENT_RATIO
+                volume_for_radius = added_canopy_volume * (1 - C.PLANT_HEIGHT_INVESTMENT_RATIO)
+
+                # dV = (pi * r^2) * dh  =>  dh = dV / (pi * r^2)
+                if self.radius > 0:
+                    delta_height = volume_for_height / (math.pi * self.radius**2)
+                    self.height += delta_height
+                
+                # dV = (2 * pi * r * h) * dr => dr = dV / (2 * pi * r * h)
+                if self.radius > 0 and self.height > 0:
+                    delta_radius = volume_for_radius / (2 * math.pi * self.radius * self.height)
+                    self.radius += delta_radius
+
+                # --- 2. Grow Roots (2D Area) ---
+                added_root_area = root_investment_energy / C.PLANT_BIOMASS_ENERGY_COST
                 new_root_area = root_area + added_root_area
                 self.root_radius = math.sqrt(new_root_area / math.pi)
+
                 if is_debug_focused:
-                    log.log(f"      - Allocation: {canopy_alloc_factor*100:.1f}% Canopy, {root_alloc_factor*100:.1f}% Roots.")
-                    log.log(f"      - New Radius: {self.radius:.4f}, New Root Radius: {self.root_radius:.4f}")
+                    log.log(f"      - Root/Canopy Split: {canopy_investment_energy:.4f} J to Canopy, {root_investment_energy:.4f} J to Roots.")
+                    log.log(f"      - Canopy Growth: {added_canopy_volume:.4f} cm^3 -> {C.PLANT_HEIGHT_INVESTMENT_RATIO*100:.1f}% for Height, {(1-C.PLANT_HEIGHT_INVESTMENT_RATIO)*100:.1f}% for Radius.")
+                    log.log(f"      - New State: Radius={self.radius:.4f}, Height={self.height:.4f}, RootRadius={self.root_radius:.4f}")
+
             elif is_debug_focused:
                 log.log(f"      - Decision: CANNOT GROW (Total limitation factor is zero).")
         
         if is_debug_focused:
-            log.log(f"--- END LOGIC {self.id} --- Final Energy: {self.energy:.2f}, Radius: {self.radius:.2f}")
+            log.log(f"--- END LOGIC {self.id} --- Final Energy: {self.energy:.2f}, Radius: {self.radius:.2f}, Height={self.height:.2f}")
 
     def is_overcrowded(self, quadtree):
         search_area = Rectangle(self.x, self.y, C.PLANT_CROWDED_RADIUS_CM, C.PLANT_CROWDED_RADIUS_CM)
