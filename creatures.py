@@ -174,8 +174,20 @@ class Plant(Creature):
 
         # Photosynthesis is now only limited by ABOVE-GROUND (canopy) competition for light.
         photosynthesis_gain = canopy_area * C.PLANT_PHOTOSYNTHESIS_PER_AREA * self.environment_eff * soil_eff * canopy_competition * aging_efficiency * time_step
-        # Metabolism (survival cost) is based on the plant's total size and local competition, but is NOT reduced by poor weather.
-        metabolism_cost = (canopy_area + root_area) * C.PLANT_METABOLISM_PER_AREA * self.competition_factor * time_step
+        
+        # --- NEW: Realistic Respiration Model (Q10 Rule) ---
+        # Metabolism (survival cost) is now calculated based on temperature's effect on respiration,
+        # which is independent of its effect on photosynthesis.
+        
+        # 1. Calculate the temperature difference from the reference.
+        temp_difference = self.temperature - C.PLANT_RESPIRATION_REFERENCE_TEMP
+        
+        # 2. Calculate the Q10 respiration factor. This models how respiration rate changes with temperature.
+        respiration_factor = C.PLANT_Q10_FACTOR ** (temp_difference / C.PLANT_Q10_INTERVAL_DIVISOR)
+        
+        # 3. Calculate the final metabolism cost.
+        metabolism_cost = (canopy_area + root_area) * C.PLANT_BASE_MAINTENANCE_RESPIRATION_PER_AREA * respiration_factor * self.competition_factor * time_step
+        
         net_energy_production = photosynthesis_gain - metabolism_cost
         
         self.energy += net_energy_production

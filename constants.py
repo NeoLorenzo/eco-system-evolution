@@ -122,9 +122,28 @@ KG_PER_G = 0.001 # Conversion factor from grams to kilograms.
 PLANT_PHOTOSYNTHESIS_PER_AREA = (SOLAR_IRRADIANCE_W_PER_M2 * PHOTOSYNTHETIC_EFFICIENCY) / CM2_PER_M2
 
 # --- Metabolism Rate (Maintenance Cost) ---
-# Calculation: Photosynthesis Rate * Respiration Fraction
-# Units: (J/s/cm^2 * %) = J/s/cm^2
-PLANT_METABOLISM_PER_AREA = PLANT_PHOTOSYNTHESIS_PER_AREA * PLANT_RESPIRATION_FRAC_OF_GPP
+# DEPRECATED: This is no longer used as metabolism is now decoupled from photosynthesis.
+# PLANT_METABOLISM_PER_AREA = PLANT_PHOTOSYNTHESIS_PER_AREA * PLANT_RESPIRATION_FRAC_OF_GPP
+
+# The base rate of energy consumption for maintenance respiration at the reference temperature.
+# This is now an independent biological constant.
+# Units: J/s/cm^2 (Joules per second per square centimeter of total biomass area)
+PLANT_BASE_MAINTENANCE_RESPIRATION_PER_AREA = 0.00075
+
+# The Q10 temperature coefficient for respiration. A value of 2.0 means the rate
+# doubles for every 10°C increase in temperature.
+# Unit: Unitless
+PLANT_Q10_FACTOR = 2.0
+
+# The reference temperature at which the base respiration rate is measured.
+# This is on the simulation's normalized scale. 0.5 represents a temperate midpoint.
+# Unit: Unitless [0, 1]
+PLANT_RESPIRATION_REFERENCE_TEMP = 0.5
+
+# The interval on our normalized temperature scale that corresponds to a 10°C change.
+# If our full temp range (0.0 to 1.0) represents a 50°C span, then 10°C is 0.2.
+# Unit: Unitless [0, 1]
+PLANT_Q10_INTERVAL_DIVISOR = 0.2
 
 # --- Biomass Cost (Growth Cost) ---
 # Calculation: Energy Density of Biomass * Mass per Area of Growth
