@@ -159,31 +159,31 @@ class Plant(Creature):
             self.has_reached_self_sufficiency = True
             if is_debug_focused: log.log(f"    MILESTONE: Plant {self.id} has reached self-sufficiency!")
 
-        # --- NEW: Resource Allocation (Reproduction vs. Growth) ---
+        # --- NEW: Unified Growth & Reproduction Investment Model ---
+        investment_from_reserves = 0
+        # A plant will always try to invest in growth as long as it's above its emergency reserves.
+        if self.energy > C.PLANT_GROWTH_INVESTMENT_ENERGY_RESERVE:
+            desired_investment = (C.PLANT_GROWTH_INVESTMENT_J_PER_HOUR / C.SECONDS_PER_HOUR) * time_step
+            # How much can we actually take from reserves?
+            available_from_reserves = self.energy - C.PLANT_GROWTH_INVESTMENT_ENERGY_RESERVE
+            # We take the smaller of what we want vs. what we have.
+            investment_from_reserves = min(desired_investment, available_from_reserves)
+            self.energy -= investment_from_reserves # Spend the energy from savings.
+
+        # The total energy available for allocation is this tick's income plus any investment from savings.
+        total_allocatable_energy = net_energy_production + investment_from_reserves
         growth_energy = 0
-        if net_energy_production > 0:
-            # Plant has a surplus. It can invest in reproduction AND grow.
-            reproductive_investment = net_energy_production * C.PLANT_REPRODUCTIVE_INVESTMENT_RATIO
+
+        if total_allocatable_energy > 0:
+            reproductive_investment = total_allocatable_energy * C.PLANT_REPRODUCTIVE_INVESTMENT_RATIO
             self.reproductive_energy_stored += reproductive_investment
-            growth_energy = net_energy_production * (1 - C.PLANT_REPRODUCTIVE_INVESTMENT_RATIO)
+            growth_energy = total_allocatable_energy * (1 - C.PLANT_REPRODUCTIVE_INVESTMENT_RATIO)
             if is_debug_focused:
-                log.log(f"    Allocation (Surplus): Investing {reproductive_investment:.4f} J in repro, {growth_energy:.4f} J in growth.")
-        else:
-            # Plant has a deficit. It can still grow by investing reserves, but cannot invest in reproduction.
-            if self.energy > C.PLANT_GROWTH_INVESTMENT_ENERGY_RESERVE:
-                investment_per_second = C.PLANT_GROWTH_INVESTMENT_J_PER_HOUR / C.SECONDS_PER_HOUR
-                investment_amount = investment_per_second * time_step
-                available_investment_energy = self.energy - C.PLANT_GROWTH_INVESTMENT_ENERGY_RESERVE
-                investment_amount = min(investment_amount, available_investment_energy)
+                log.log(f"    Allocation: Total pool of {total_allocatable_energy:.4f} J -> {reproductive_investment:.4f} J to repro, {growth_energy:.4f} J to growth.")
+        elif is_debug_focused:
+            log.log(f"    Allocation: No surplus energy or reserves to invest.")
 
-                if investment_amount > 0:
-                    growth_energy = investment_amount
-                    self.energy -= investment_amount
-                    if is_debug_focused: log.log(f"    Allocation (Deficit): Investing {investment_amount:.4f} J from reserves into growth.")
-            elif is_debug_focused:
-                log.log(f"    Allocation (Deficit): Cannot invest, reserves too low.")
-
-        # --- NEW: Reproduction Logic ---
+        # --- Reproduction Logic ---
         if self.can_reproduce() and not self.is_overcrowded(world.quadtree):
             if is_debug_focused: log.log(f"    Reproduction Check: Conditions met. Attempting to spawn.")
             new_plant = self.reproduce(world, world.quadtree)
