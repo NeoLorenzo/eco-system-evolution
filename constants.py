@@ -155,6 +155,14 @@ CREATURE_ID_MAX = 9999
 # =============================================================================
 # --- PLANTS ---
 # =============================================================================
+# The energy a plant will spend per hour on growth if it's in the "seedling" phase
+# (i.e., running a deficit but has large energy reserves).
+PLANT_GROWTH_INVESTMENT_J_PER_HOUR = 900.0
+
+# The energy threshold below which a plant will stop investing in growth to conserve energy.
+# It will not spend its last reserves on growing.
+PLANT_GROWTH_INVESTMENT_ENERGY_RESERVE = 10000.0
+
 # The mandatory waiting period (in seconds) after reproduction before trying again.
 PLANT_REPRODUCTION_COOLDOWN_SECONDS = 2592000.0 # (30 days)
 

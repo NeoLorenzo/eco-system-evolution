@@ -200,14 +200,39 @@ class Plant(Creature):
                 world.add_newborn(new_plant)
                 self.reproduction_cooldown = C.PLANT_REPRODUCTION_COOLDOWN_SECONDS
         
+                # --- Growth Logic ---
+        growth_energy = 0
         if net_energy_production > 0:
-            if is_debug_focused: log.log(f"    Growth Check (Surplus of {net_energy_production:.4f} J):")
-            total_added_biomass = net_energy_production / C.PLANT_BIOMASS_ENERGY_COST
-            if is_debug_focused: log.log(f"      - Surplus converts to {total_added_biomass:.4f} cm^2 of new biomass.")
+            # If we have a surplus, invest it all into growth.
+            growth_energy = net_energy_production
+            if is_debug_focused: log.log(f"    Growth Check (Surplus of {net_energy_production:.4f} J): Investing surplus.")
 
-            # --- NEW: Proportional Growth Allocation ---
-            # The plant allocates resources to whichever system is less efficient to achieve functional balance.
-            # If soil is poor (low soil_eff), it allocates more to roots. If air/light is poor (low env_eff), it allocates more to canopy.
+        elif self.energy > C.PLANT_GROWTH_INVESTMENT_ENERGY_RESERVE:
+            # If we have a deficit BUT a large reserve, invest a fixed amount from that reserve.
+            # This represents the "seedling" phase, spending stored energy to grow.
+            investment_per_second = C.PLANT_GROWTH_INVESTMENT_J_PER_HOUR / C.SECONDS_PER_HOUR
+            investment_amount = investment_per_second * time_step
+            
+            # Ensure we don't dip into our essential reserve.
+            available_investment_energy = self.energy - C.PLANT_GROWTH_INVESTMENT_ENERGY_RESERVE
+            investment_amount = min(investment_amount, available_investment_energy)
+
+            if investment_amount > 0:
+                growth_energy = investment_amount
+                self.energy -= investment_amount # Pay for the growth from our reserves.
+                if is_debug_focused: log.log(f"    Growth Check (Deficit of {net_energy_production:.4f} J): Investing {investment_amount:.4f} J from reserves.")
+            elif is_debug_focused:
+                log.log(f"    Growth Check (Deficit of {net_energy_production:.4f} J): Cannot invest, reserves too low.")
+        
+        else:
+            if is_debug_focused:
+                log.log(f"    Growth Check (Deficit of {net_energy_production:.4f} J): CANNOT GROW (Reserves below threshold).")
+
+        if growth_energy > 0:
+            total_added_biomass = growth_energy / C.PLANT_BIOMASS_ENERGY_COST
+            if is_debug_focused: log.log(f"      - Investment converts to {total_added_biomass:.4f} cm^2 of new biomass.")
+
+            # Proportional Growth Allocation: The plant allocates resources to whichever system is less efficient.
             total_limitation = self.environment_eff + soil_eff
             if total_limitation > 0:
                 canopy_alloc_factor = soil_eff / total_limitation
@@ -232,10 +257,6 @@ class Plant(Creature):
                 if is_debug_focused: log.log(f"      - New Root Radius: {self.root_radius:.4f}")
             elif is_debug_focused:
                 log.log(f"      - Decision: CANNOT GROW (Total limitation factor is zero).")
-
-        elif is_debug_focused:
-            log.log(f"    Growth Check (Deficit of {net_energy_production:.4f} J):")
-            log.log(f"      - Decision: CANNOT GROW.")
         
         if is_debug_focused:
             log.log(f"--- END LOGIC {self.id} --- Final Energy: {self.energy:.2f}, Radius: {self.radius:.2f}")
