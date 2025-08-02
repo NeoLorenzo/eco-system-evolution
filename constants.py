@@ -138,8 +138,9 @@ PLANT_BIOMASS_ENERGY_COST = (BIOMASS_ENERGY_DENSITY_J_PER_KG * LEAF_MASS_PER_ARE
 
 # --- Initial State & Placement ---
 # A starting buffer to survive the initial phase where the canopy is small.
-# This value needs to be large enough to cover metabolic costs while the plant grows.
-CREATURE_INITIAL_ENERGY = 5000.0
+# This represents the energy stored in the seed (endosperm) and must be
+# large enough to cover the metabolic deficit of a seedling for several days.
+CREATURE_INITIAL_ENERGY = 48000.0
 INITIAL_PLANT_POSITION = (50000, 50000)
 INITIAL_ANIMAL_POSITION = (51000, 51000)
 
@@ -165,7 +166,7 @@ PLANT_COMPETITION_UPDATE_INTERVAL_SECONDS = 1.0
 PLANT_LOGIC_UPDATE_INTERVAL_SECONDS = 3600.0 # (1 Hour)
 
 # --- Initial Properties & Size ---
-PLANT_INITIAL_RADIUS_CM = 20
+PLANT_INITIAL_RADIUS_CM = 10
 PLANT_CORE_RADIUS_FACTOR = 0.25
 
 # --- Reproduction & Spacing ---
