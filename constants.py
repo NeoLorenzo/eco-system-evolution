@@ -164,8 +164,7 @@ INITIAL_PLANT_POSITION = (50000, 50000)
 INITIAL_ANIMAL_POSITION = (51000, 51000)
 
 # --- Reproduction ---
-# The energy required to create a new offspring. This is transferred from the parent.
-# The parent must have this much energy stored before it can reproduce.
+# DEPRECATED for Plants, still used by Animals. Plants now use a more complex system.
 CREATURE_REPRODUCTION_ENERGY_COST = CREATURE_INITIAL_ENERGY # Joules
 
 CREATURE_ID_MIN = 1000
@@ -174,6 +173,23 @@ CREATURE_ID_MAX = 9999
 # =============================================================================
 # --- PLANTS ---
 # =============================================================================
+# --- NEW: Reproduction & Maturity ---
+# The proportion of surplus energy a plant invests in its reproductive structures.
+# Unit: Unitless ratio [0, 1]
+PLANT_REPRODUCTIVE_INVESTMENT_RATIO = 0.25
+
+# The amount of stored reproductive energy required before a plant is mature enough to fruit.
+# Unit: Joules (J)
+PLANT_REPRODUCTION_MINIMUM_STORED_ENERGY = 20000.0
+
+# The "sunk cost" to produce the non-seed parts of a fruit (flesh, skin). This energy is consumed by the parent.
+# Unit: Joules (J)
+PLANT_FRUIT_STRUCTURAL_ENERGY_COST = 5000.0
+
+# The energy packed into the seed itself, which becomes the newborn's starting energy.
+# Unit: Joules (J)
+PLANT_SEED_PROVISIONING_ENERGY = 15000.0
+
 # The energy a plant will spend per hour on growth if it's in the "seedling" phase
 # (i.e., running a deficit but has large energy reserves).
 PLANT_GROWTH_INVESTMENT_J_PER_HOUR = 900.0

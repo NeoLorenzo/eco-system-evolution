@@ -13,10 +13,10 @@ def lerp_color(c1, c2, t):
     return tuple(int(start + (end - start) * t) for start, end in zip(c1, c2))
 
 class Creature:
-    def __init__(self, x, y):
+    def __init__(self, x, y, initial_energy=C.CREATURE_INITIAL_ENERGY):
         self.x = x  # World coordinate, in centimeters (cm)
         self.y = y  # World coordinate, in centimeters (cm)
-        self.energy = C.CREATURE_INITIAL_ENERGY  # Stored energy, in Joules (J)
+        self.energy = initial_energy  # Stored energy, in Joules (J)
         self.age = 0  # Age of the creature, in seconds (s)
         self.is_alive = True
         self.id = random.randint(C.CREATURE_ID_MIN, C.CREATURE_ID_MAX)
@@ -29,55 +29,24 @@ class Creature:
             world.report_death(self)
 
     def can_reproduce(self):
-        # A creature can reproduce if it has stored enough energy to pay the full cost of a new offspring.
+        # Generic reproduction check, now only used by Animals.
+        # Plants have their own more complex version of this method.
         return self.energy >= C.CREATURE_REPRODUCTION_ENERGY_COST
 
     def reproduce(self, world, quadtree):
-        log.log(f"DEBUG ({self.id}): Attempting to reproduce.")
-        self.energy -= C.CREATURE_REPRODUCTION_ENERGY_COST
-        spread_area = Rectangle(self.x, self.y, C.PLANT_SEED_SPREAD_RADIUS_CM, C.PLANT_SEED_SPREAD_RADIUS_CM)
-        neighbors_in_spread_area = quadtree.query(spread_area, [])
-        best_location = None
-        least_neighbors = float('inf')
-        for i in range(C.PLANT_REPRODUCTION_ATTEMPTS):
-            spawn_angle = random.uniform(0, 2 * math.pi)
-            spawn_dist = random.uniform(0, C.PLANT_SEED_SPREAD_RADIUS_CM)
-            candidate_x = self.x + spawn_dist * math.cos(spawn_angle)
-            candidate_y = self.y + spawn_dist * math.sin(spawn_angle)
-            is_valid = True
-            current_neighbors = 0
-            for neighbor in neighbors_in_spread_area:
-                if isinstance(neighbor, Plant):
-                    new_plant_personal_space = (1.0 * neighbor.genes.core_radius_factor) * C.PLANT_CORE_PERSONAL_SPACE_FACTOR
-                    min_dist = new_plant_personal_space + neighbor.get_personal_space_radius()
-                    dist_sq = (candidate_x - neighbor.x)**2 + (candidate_y - neighbor.y)**2
-                    if dist_sq < min_dist**2:
-                        is_valid = False
-                        break
-                    crowd_dist_sq = (candidate_x - neighbor.x)**2 + (candidate_y - neighbor.y)**2
-                    if crowd_dist_sq < C.PLANT_CROWDED_RADIUS_CM**2:
-                        current_neighbors += 1
-            if not is_valid:
-                continue
-            if current_neighbors < least_neighbors:
-                least_neighbors = current_neighbors
-                best_location = (candidate_x, candidate_y)
-
-        if best_location:
-            log.log(f"DEBUG ({self.id}): Found a valid spawn location.")
-            return Plant(world, best_location[0], best_location[1])
-        
-        log.log(f"DEBUG ({self.id}): Failed to find a valid spawn location. Reproductive energy was lost.")
-        # The energy cost is now a sunk cost and is NOT refunded.
+        # This is now a placeholder and should be overridden by child classes
+        # if they have specific reproduction logic (like Plant does).
+        log.log(f"DEBUG ({self.id}): Generic reproduce() called. This should not happen for Plants.")
         return None
 
 class Plant(Creature):
-    def __init__(self, world, x, y):
-        super().__init__(x, y)
+    def __init__(self, world, x, y, initial_energy=C.CREATURE_INITIAL_ENERGY):
+        super().__init__(x, y, initial_energy)
         log.log(f"DEBUG ({self.id}): Initializing as a Plant.")
         self.genes = PlantGenes()
         self.radius = C.PLANT_INITIAL_RADIUS_CM  # Canopy radius, in centimeters (cm)
         self.root_radius = C.PLANT_INITIAL_ROOT_RADIUS_CM  # Root system radius, in centimeters (cm)
+        self.reproductive_energy_stored = 0.0 # Energy invested in reproductive structures, in Joules (J)
         self.competition_factor = 1.0  # Efficiency multiplier based on nearby plants, unitless [0, 1]
         self.competition_update_accumulator = 0.0  # Time since last competition check, in seconds (s)
         self.has_reached_self_sufficiency = False # Has the plant ever had a positive energy balance?
@@ -144,23 +113,19 @@ class Plant(Creature):
         """
         if not self.is_alive: return
 
-        # The time_step is now a fixed value (e.g., 3600 seconds) passed by the scheduler.
         self.age += time_step
-
         is_debug_focused = (world.debug_focused_creature_id == self.id)
 
         if is_debug_focused:
             log.log(f"\n--- PLANT {self.id} LOGIC (Age: {self.age/C.SECONDS_PER_DAY:.1f} days) ---")
             log.log(f"  Processing a single consolidated tick of {time_step:.2f}s.")
-            log.log(f"    State: Energy={self.energy:.2f}, Radius={self.radius:.2f}, RootRadius={self.root_radius:.2f}")
+            log.log(f"    State: Energy={self.energy:.2f}, ReproEnergy={self.reproductive_energy_stored:.2f}, Radius={self.radius:.2f}")
 
         # --- CORE BIOLOGY LOGIC (Calculations now use time_step directly) ---
         self.competition_update_accumulator += time_step
-        
         canopy_competition, root_competition = 1.0, 1.0
         if self.competition_update_accumulator >= C.PLANT_COMPETITION_UPDATE_INTERVAL_SECONDS:
             canopy_competition, root_competition = self.calculate_competition_factor(world.quadtree)
-            # The overall competition factor is the product of both pressures
             self.competition_factor = canopy_competition * root_competition
             self.competition_update_accumulator %= C.PLANT_COMPETITION_UPDATE_INTERVAL_SECONDS
 
@@ -171,25 +136,13 @@ class Plant(Creature):
         
         canopy_area = math.pi * self.radius**2
         root_area = math.pi * self.root_radius**2
-
-        # Photosynthesis is now only limited by ABOVE-GROUND (canopy) competition for light.
         photosynthesis_gain = canopy_area * C.PLANT_PHOTOSYNTHESIS_PER_AREA * self.environment_eff * soil_eff * canopy_competition * aging_efficiency * time_step
         
-        # --- NEW: Realistic Respiration Model (Q10 Rule) ---
-        # Metabolism (survival cost) is now calculated based on temperature's effect on respiration,
-        # which is independent of its effect on photosynthesis.
-        
-        # 1. Calculate the temperature difference from the reference.
         temp_difference = self.temperature - C.PLANT_RESPIRATION_REFERENCE_TEMP
-        
-        # 2. Calculate the Q10 respiration factor. This models how respiration rate changes with temperature.
         respiration_factor = C.PLANT_Q10_FACTOR ** (temp_difference / C.PLANT_Q10_INTERVAL_DIVISOR)
-        
-        # 3. Calculate the final metabolism cost.
         metabolism_cost = (canopy_area + root_area) * C.PLANT_BASE_MAINTENANCE_RESPIRATION_PER_AREA * respiration_factor * self.competition_factor * time_step
         
         net_energy_production = photosynthesis_gain - metabolism_cost
-        
         self.energy += net_energy_production
 
         if is_debug_focused:
@@ -199,39 +152,24 @@ class Plant(Creature):
 
         if self.energy <= 0:
             self.die(world, "starvation")
-            if is_debug_focused:
-                log.log(f"  Plant {self.id} died from starvation. Final Energy: {self.energy:.2f}")
+            if is_debug_focused: log.log(f"  Plant {self.id} died from starvation. Final Energy: {self.energy:.2f}")
             return
 
-        # --- MILESTONE CHECK: Has the plant become self-sufficient? ---
         if not self.has_reached_self_sufficiency and net_energy_production > 0:
             self.has_reached_self_sufficiency = True
-            if is_debug_focused:
-                log.log(f"    MILESTONE: Plant {self.id} has reached self-sufficiency!")
+            if is_debug_focused: log.log(f"    MILESTONE: Plant {self.id} has reached self-sufficiency!")
 
-        # --- Reproduction Logic ---
-        # A plant can reproduce only if it has a NET ENERGY SURPLUS from this tick,
-        # has stored enough total energy to create a seed, and is not overcrowded.
-        # The "cooldown" is now an emergent property of how long it takes to save this energy.
-        if net_energy_production > 0 and self.can_reproduce() and not self.is_overcrowded(world.quadtree):
-            if is_debug_focused: log.log(f"    Reproduction Check: Net surplus, has {self.energy:.2f} J energy. Attempting to spawn.")
-            new_plant = self.reproduce(world, world.quadtree)
-            if new_plant:
-                world.add_newborn(new_plant)
-                # No cooldown to set. The energy cost itself is the cooldown.
-                if is_debug_focused: log.log(f"    Reproduction SUCCESS. Energy remaining: {self.energy:.2f} J.")
-        
-                # --- Growth Logic ---
+        # --- NEW: Resource Allocation (Reproduction vs. Growth) ---
         growth_energy = 0
-        # CASE 1: The plant has a net energy surplus. It can always grow by investing the surplus.
         if net_energy_production > 0:
-            growth_energy = net_energy_production
-            if is_debug_focused: log.log(f"    Growth Check (Surplus of {net_energy_production:.4f} J): Investing surplus.")
-
-        # CASE 2: The plant has a deficit. It can still grow by investing its stored energy reserves,
-        # as long as it stays above the emergency reserve threshold. This allows a juvenile plant
-        # to push past the break-even point into robust profitability.
+            # Plant has a surplus. It can invest in reproduction AND grow.
+            reproductive_investment = net_energy_production * C.PLANT_REPRODUCTIVE_INVESTMENT_RATIO
+            self.reproductive_energy_stored += reproductive_investment
+            growth_energy = net_energy_production * (1 - C.PLANT_REPRODUCTIVE_INVESTMENT_RATIO)
+            if is_debug_focused:
+                log.log(f"    Allocation (Surplus): Investing {reproductive_investment:.4f} J in repro, {growth_energy:.4f} J in growth.")
         else:
+            # Plant has a deficit. It can still grow by investing reserves, but cannot invest in reproduction.
             if self.energy > C.PLANT_GROWTH_INVESTMENT_ENERGY_RESERVE:
                 investment_per_second = C.PLANT_GROWTH_INVESTMENT_J_PER_HOUR / C.SECONDS_PER_HOUR
                 investment_amount = investment_per_second * time_step
@@ -240,52 +178,111 @@ class Plant(Creature):
 
                 if investment_amount > 0:
                     growth_energy = investment_amount
-                    self.energy -= investment_amount # Pay for the growth from our reserves.
-                    if is_debug_focused: log.log(f"    Growth Check (Deficit of {net_energy_production:.4f} J): Investing {investment_amount:.4f} J from reserves.")
-                elif is_debug_focused:
-                    log.log(f"    Growth Check (Deficit of {net_energy_production:.4f} J): Cannot invest, reserves too low.")
-            else:
-                 if is_debug_focused:
-                    log.log(f"    Growth Check (Deficit of {net_energy_production:.4f} J): CANNOT GROW (Reserves below threshold).")
+                    self.energy -= investment_amount
+                    if is_debug_focused: log.log(f"    Allocation (Deficit): Investing {investment_amount:.4f} J from reserves into growth.")
+            elif is_debug_focused:
+                log.log(f"    Allocation (Deficit): Cannot invest, reserves too low.")
 
+        # --- NEW: Reproduction Logic ---
+        if self.can_reproduce() and not self.is_overcrowded(world.quadtree):
+            if is_debug_focused: log.log(f"    Reproduction Check: Conditions met. Attempting to spawn.")
+            new_plant = self.reproduce(world, world.quadtree)
+            if new_plant:
+                world.add_newborn(new_plant)
+                if is_debug_focused: log.log(f"    Reproduction SUCCESS. Energy remaining: {self.energy:.2f} J, ReproEnergy: {self.reproductive_energy_stored:.2f} J.")
+        
+        # --- Growth Logic ---
         if growth_energy > 0:
             total_added_biomass = growth_energy / C.PLANT_BIOMASS_ENERGY_COST
-            if is_debug_focused: log.log(f"      - Investment converts to {total_added_biomass:.4f} cm^2 of new biomass.")
+            if is_debug_focused: log.log(f"      - Growth converts {growth_energy:.4f} J to {total_added_biomass:.4f} cm^2 of new biomass.")
 
-            # Proportional Growth Allocation: The plant allocates resources to whichever system is less efficient.
             total_limitation = self.environment_eff + soil_eff
             if total_limitation > 0:
                 canopy_alloc_factor = soil_eff / total_limitation
                 root_alloc_factor = self.environment_eff / total_limitation
-
                 added_canopy_area = total_added_biomass * canopy_alloc_factor
                 added_root_area = total_added_biomass * root_alloc_factor
-
-                if is_debug_focused:
-                    log.log(f"      - Proportional Allocation: {canopy_alloc_factor*100:.1f}% to Canopy, {root_alloc_factor*100:.1f}% to Roots.")
-                    log.log(f"      - Growing CANOPY. Old Radius: {self.radius:.4f}, Adding Area: {added_canopy_area:.4f}")
                 
                 new_canopy_area = canopy_area + added_canopy_area
                 self.radius = math.sqrt(new_canopy_area / math.pi)
-                if is_debug_focused: log.log(f"      - New Radius: {self.radius:.4f}")
-
-                if is_debug_focused:
-                    log.log(f"      - Growing ROOTS. Old Root Radius: {self.root_radius:.4f}, Adding Area: {added_root_area:.4f}")
                 
                 new_root_area = root_area + added_root_area
                 self.root_radius = math.sqrt(new_root_area / math.pi)
-                if is_debug_focused: log.log(f"      - New Root Radius: {self.root_radius:.4f}")
+                if is_debug_focused:
+                    log.log(f"      - Allocation: {canopy_alloc_factor*100:.1f}% Canopy, {root_alloc_factor*100:.1f}% Roots.")
+                    log.log(f"      - New Radius: {self.radius:.4f}, New Root Radius: {self.root_radius:.4f}")
             elif is_debug_focused:
                 log.log(f"      - Decision: CANNOT GROW (Total limitation factor is zero).")
         
         if is_debug_focused:
             log.log(f"--- END LOGIC {self.id} --- Final Energy: {self.energy:.2f}, Radius: {self.radius:.2f}")
 
-    # ... (rest of Plant class is unchanged) ...
     def is_overcrowded(self, quadtree):
         search_area = Rectangle(self.x, self.y, C.PLANT_CROWDED_RADIUS_CM, C.PLANT_CROWDED_RADIUS_CM)
         neighbors = quadtree.query(search_area, [])
         return len(neighbors) > C.PLANT_MAX_NEIGHBORS
+
+    def can_reproduce(self):
+        """
+        Overrides the base Creature method with more complex, realistic conditions for a Plant.
+        A plant can reproduce if it is mature (has enough stored reproductive energy) AND
+        has enough current energy to pay for both the fruit structure and the seed provisioning.
+        """
+        is_mature = self.reproductive_energy_stored >= C.PLANT_REPRODUCTION_MINIMUM_STORED_ENERGY
+        total_current_cost = C.PLANT_FRUIT_STRUCTURAL_ENERGY_COST + C.PLANT_SEED_PROVISIONING_ENERGY
+        has_enough_energy = self.energy >= total_current_cost
+        return is_mature and has_enough_energy
+
+    def reproduce(self, world, quadtree):
+        """
+        Overrides the base Creature method. Finds a valid spawn location and creates a new Plant
+        with a specific provision of energy transferred from the parent.
+        """
+        log.log(f"DEBUG ({self.id}): Attempting to reproduce.")
+        
+        # --- 1. Find a suitable location for the offspring ---
+        spread_area = Rectangle(self.x, self.y, C.PLANT_SEED_SPREAD_RADIUS_CM, C.PLANT_SEED_SPREAD_RADIUS_CM)
+        neighbors_in_spread_area = quadtree.query(spread_area, [])
+        best_location = None
+        least_neighbors = float('inf')
+        for i in range(C.PLANT_REPRODUCTION_ATTEMPTS):
+            spawn_angle = random.uniform(0, 2 * math.pi)
+            spawn_dist = random.uniform(0, C.PLANT_SEED_SPREAD_RADIUS_CM)
+            candidate_x = self.x + spawn_dist * math.cos(spawn_angle)
+            candidate_y = self.y + spawn_dist * math.sin(spawn_angle)
+            is_valid = True
+            current_neighbors = 0
+            for neighbor in neighbors_in_spread_area:
+                if isinstance(neighbor, Plant):
+                    new_plant_personal_space = (1.0 * neighbor.genes.core_radius_factor) * C.PLANT_CORE_PERSONAL_SPACE_FACTOR
+                    min_dist = new_plant_personal_space + neighbor.get_personal_space_radius()
+                    dist_sq = (candidate_x - neighbor.x)**2 + (candidate_y - neighbor.y)**2
+                    if dist_sq < min_dist**2:
+                        is_valid = False
+                        break
+                    crowd_dist_sq = (candidate_x - neighbor.x)**2 + (candidate_y - neighbor.y)**2
+                    if crowd_dist_sq < C.PLANT_CROWDED_RADIUS_CM**2:
+                        current_neighbors += 1
+            if not is_valid:
+                continue
+            if current_neighbors < least_neighbors:
+                least_neighbors = current_neighbors
+                best_location = (candidate_x, candidate_y)
+
+        # --- 2. If a location is found, pay the costs and create the new plant ---
+        if best_location:
+            log.log(f"DEBUG ({self.id}): Found a valid spawn location. Paying costs.")
+            
+            # Pay the dual energy costs
+            self.energy -= (C.PLANT_FRUIT_STRUCTURAL_ENERGY_COST + C.PLANT_SEED_PROVISIONING_ENERGY)
+            self.reproductive_energy_stored -= C.PLANT_REPRODUCTION_MINIMUM_STORED_ENERGY
+            
+            # Create the new plant, transferring the provisioned energy
+            return Plant(world, best_location[0], best_location[1], initial_energy=C.PLANT_SEED_PROVISIONING_ENERGY)
+        
+        # --- 3. If no location is found, no costs are paid ---
+        log.log(f"DEBUG ({self.id}): Failed to find a valid spawn location. No energy was lost.")
+        return None
 
     def calculate_environment_efficiency(self, temperature, humidity):
         temp_diff = abs(temperature - self.genes.optimal_temperature)
