@@ -176,8 +176,8 @@ class Plant(Creature):
 
         # Photosynthesis is now only limited by ABOVE-GROUND (canopy) competition for light.
         photosynthesis_gain = canopy_area * C.PLANT_PHOTOSYNTHESIS_PER_AREA * self.environment_eff * soil_eff * canopy_competition * aging_efficiency * time_step
-        # Metabolism (survival cost) is affected by the TOTAL stress on the plant (both canopy and root competition).
-        metabolism_cost = (canopy_area + root_area) * C.PLANT_METABOLISM_PER_AREA * self.environment_eff * self.competition_factor * time_step
+        # Metabolism (survival cost) is based on the plant's total size and local competition, but is NOT reduced by poor weather.
+        metabolism_cost = (canopy_area + root_area) * C.PLANT_METABOLISM_PER_AREA * self.competition_factor * time_step
         net_energy_production = photosynthesis_gain - metabolism_cost
         
         self.energy += net_energy_production
