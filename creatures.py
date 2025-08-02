@@ -109,14 +109,31 @@ class Plant(Creature):
         else: return None
 
     def calculate_competition_factor(self, quadtree):
-        competition_area = Rectangle(self.x, self.y, C.PLANT_COMPETITION_RADIUS_CM, C.PLANT_COMPETITION_RADIUS_CM)
-        neighbors = quadtree.query(competition_area, [])
-        total_competition_mass = 0
-        for neighbor in neighbors:
-            if neighbor is self: continue
-            total_competition_mass += neighbor.radius**2
-        competition_factor = 1 / (1 + total_competition_mass * C.PLANT_COMPETITION_MASS_FACTOR)
-        return competition_factor
+        # --- Canopy Competition (for light) ---
+        canopy_search_area = Rectangle(self.x, self.y, self.radius, self.radius)
+        canopy_neighbors = quadtree.query(canopy_search_area, [])
+        total_canopy_competition_mass = 0
+        for neighbor in canopy_neighbors:
+            if neighbor is self or not isinstance(neighbor, Plant): continue
+            # Check for physical overlap based on radius
+            dist_sq = (self.x - neighbor.x)**2 + (self.y - neighbor.y)**2
+            if dist_sq < (self.radius + neighbor.radius)**2:
+                total_canopy_competition_mass += neighbor.radius**2
+        canopy_competition_factor = 1 / (1 + total_canopy_competition_mass * C.PLANT_COMPETITION_MASS_FACTOR)
+
+        # --- Root Competition (for water/nutrients) ---
+        root_search_area = Rectangle(self.x, self.y, self.root_radius, self.root_radius)
+        root_neighbors = quadtree.query(root_search_area, [])
+        total_root_competition_mass = 0
+        for neighbor in root_neighbors:
+            if neighbor is self or not isinstance(neighbor, Plant): continue
+            # Check for physical overlap based on root radius
+            dist_sq = (self.x - neighbor.x)**2 + (self.y - neighbor.y)**2
+            if dist_sq < (self.root_radius + neighbor.root_radius)**2:
+                total_root_competition_mass += neighbor.root_radius**2
+        root_competition_factor = 1 / (1 + total_root_competition_mass * C.PLANT_COMPETITION_MASS_FACTOR)
+
+        return canopy_competition_factor, root_competition_factor
 
     # --- MAJOR CHANGE: The update logic is now much cleaner. ---
     def update(self, world, time_step):
@@ -134,7 +151,7 @@ class Plant(Creature):
         if is_debug_focused:
             log.log(f"\n--- PLANT {self.id} LOGIC (Age: {self.age/C.SECONDS_PER_DAY:.1f} days) ---")
             log.log(f"  Processing a single consolidated tick of {time_step:.2f}s.")
-            log.log(f"    State: Energy={self.energy:.2f}, Radius={self.radius:.2f}")
+            log.log(f"    State: Energy={self.energy:.2f}, Radius={self.radius:.2f}, RootRadius={self.root_radius:.2f}")
 
         was_ready_to_reproduce = self.reproduction_cooldown <= 0
 
@@ -142,8 +159,11 @@ class Plant(Creature):
         self.reproduction_cooldown = max(0, self.reproduction_cooldown - time_step)
         self.competition_update_accumulator += time_step
         
+        canopy_competition, root_competition = 1.0, 1.0
         if self.competition_update_accumulator >= C.PLANT_COMPETITION_UPDATE_INTERVAL_SECONDS:
-            self.competition_factor = self.calculate_competition_factor(world.quadtree)
+            canopy_competition, root_competition = self.calculate_competition_factor(world.quadtree)
+            # The overall competition factor is the product of both pressures
+            self.competition_factor = canopy_competition * root_competition
             self.competition_update_accumulator %= C.PLANT_COMPETITION_UPDATE_INTERVAL_SECONDS
 
         max_soil_eff = self.genes.soil_efficiency.get(self.soil_type, 0)
@@ -154,14 +174,17 @@ class Plant(Creature):
         canopy_area = math.pi * self.radius**2
         root_area = math.pi * self.root_radius**2
 
-        photosynthesis_gain = canopy_area * C.PLANT_PHOTOSYNTHESIS_PER_AREA * self.environment_eff * soil_eff * self.competition_factor * aging_efficiency * time_step
-        metabolism_cost = (canopy_area + root_area) * C.PLANT_METABOLISM_PER_AREA * self.environment_eff * time_step
+        # Photosynthesis is now only limited by ABOVE-GROUND (canopy) competition for light.
+        photosynthesis_gain = canopy_area * C.PLANT_PHOTOSYNTHESIS_PER_AREA * self.environment_eff * soil_eff * canopy_competition * aging_efficiency * time_step
+        # Metabolism (survival cost) is affected by the TOTAL stress on the plant (both canopy and root competition).
+        metabolism_cost = (canopy_area + root_area) * C.PLANT_METABOLISM_PER_AREA * self.environment_eff * self.competition_factor * time_step
         net_energy_production = photosynthesis_gain - metabolism_cost
         
         self.energy += net_energy_production
 
         if is_debug_focused:
-            log.log(f"    Efficiencies: Env={self.environment_eff:.3f}, Soil={soil_eff:.3f}, Aging={aging_efficiency:.3f}, Comp={self.competition_factor:.3f}")
+            log.log(f"    Efficiencies: Env={self.environment_eff:.3f}, Soil={soil_eff:.3f}, Aging={aging_efficiency:.3f}")
+            log.log(f"    Competition: Canopy={canopy_competition:.3f}, Root={root_competition:.3f}, Combined={self.competition_factor:.3f}")
             log.log(f"    Energy: Gained={photosynthesis_gain:.4f}, Lost={metabolism_cost:.4f}, Net={net_energy_production:.4f}")
 
         if self.energy <= 0:
@@ -179,21 +202,37 @@ class Plant(Creature):
         
         if net_energy_production > 0:
             if is_debug_focused: log.log(f"    Growth Check (Surplus of {net_energy_production:.4f} J):")
-            added_biomass_area = net_energy_production / C.PLANT_BIOMASS_ENERGY_COST
-            if is_debug_focused: log.log(f"      - Surplus converts to {added_biomass_area:.4f} cm^2 of new biomass.")
+            total_added_biomass = net_energy_production / C.PLANT_BIOMASS_ENERGY_COST
+            if is_debug_focused: log.log(f"      - Surplus converts to {total_added_biomass:.4f} cm^2 of new biomass.")
 
-            grows_canopy = (soil_eff >= self.environment_eff)
-            if grows_canopy:
-                if is_debug_focused: log.log(f"      - Decision: Growing CANOPY. Old Radius: {self.radius:.4f}")
-                new_canopy_area = canopy_area + added_biomass_area
+            # --- NEW: Proportional Growth Allocation ---
+            # The plant allocates resources to whichever system is less efficient to achieve functional balance.
+            # If soil is poor (low soil_eff), it allocates more to roots. If air/light is poor (low env_eff), it allocates more to canopy.
+            total_limitation = self.environment_eff + soil_eff
+            if total_limitation > 0:
+                canopy_alloc_factor = soil_eff / total_limitation
+                root_alloc_factor = self.environment_eff / total_limitation
+
+                added_canopy_area = total_added_biomass * canopy_alloc_factor
+                added_root_area = total_added_biomass * root_alloc_factor
+
+                if is_debug_focused:
+                    log.log(f"      - Proportional Allocation: {canopy_alloc_factor*100:.1f}% to Canopy, {root_alloc_factor*100:.1f}% to Roots.")
+                    log.log(f"      - Growing CANOPY. Old Radius: {self.radius:.4f}, Adding Area: {added_canopy_area:.4f}")
+                
+                new_canopy_area = canopy_area + added_canopy_area
                 self.radius = math.sqrt(new_canopy_area / math.pi)
                 if is_debug_focused: log.log(f"      - New Radius: {self.radius:.4f}")
-            else:
-                if is_debug_focused: log.log(f"      - Decision: Growing ROOTS. Old Root Radius: {self.root_radius:.4f}")
-                new_root_area = root_area + added_biomass_area
+
+                if is_debug_focused:
+                    log.log(f"      - Growing ROOTS. Old Root Radius: {self.root_radius:.4f}, Adding Area: {added_root_area:.4f}")
+                
+                new_root_area = root_area + added_root_area
                 self.root_radius = math.sqrt(new_root_area / math.pi)
                 if is_debug_focused: log.log(f"      - New Root Radius: {self.root_radius:.4f}")
-        
+            elif is_debug_focused:
+                log.log(f"      - Decision: CANNOT GROW (Total limitation factor is zero).")
+
         elif is_debug_focused:
             log.log(f"    Growth Check (Deficit of {net_energy_production:.4f} J):")
             log.log(f"      - Decision: CANNOT GROW.")
