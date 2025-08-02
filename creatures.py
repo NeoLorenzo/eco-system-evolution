@@ -78,34 +78,54 @@ class Plant(Creature):
         elif C.TERRAIN_GRASS_LEVEL <= elevation < C.TERRAIN_DIRT_LEVEL: return "dirt"
         else: return None
 
-    def calculate_competition_factor(self, quadtree):
+    def _calculate_circle_intersection_area(self, d, r1, r2):
+        """Calculates the area of intersection of two circles."""
+        if d <= 0: # Handle case where circles are concentric or d is invalid
+            return math.pi * min(r1, r2)**2
+        if d >= r1 + r2:
+            return 0  # Circles do not intersect
+        if d <= abs(r1 - r2):
+            return math.pi * min(r1, r2)**2  # One circle is contained within the other
+
+        r1_sq, r2_sq, d_sq = r1**2, r2**2, d**2
+        
+        # Formula for the area of intersection of two circles
+        term1 = r1_sq * math.acos((d_sq + r1_sq - r2_sq) / (2 * d * r1))
+        term2 = r2_sq * math.acos((d_sq + r2_sq - r1_sq) / (2 * d * r2))
+        term3 = 0.5 * math.sqrt((-d + r1 + r2) * (d + r1 - r2) * (d - r1 + r2) * (d + r1 + r2))
+        
+        return term1 + term2 - term3
+
+    def calculate_physical_overlap(self, quadtree):
+        """Calculates the total geometric area of canopy and root overlap with neighbors."""
+        total_shaded_canopy_area = 0
+        total_overlapped_root_area = 0
+
         # --- Canopy Competition (for light) ---
-        canopy_search_area = Rectangle(self.x, self.y, self.radius, self.radius)
+        # Search a wider area to find all potential overlapping neighbors
+        canopy_search_area = Rectangle(self.x, self.y, self.radius * 2, self.radius * 2)
         canopy_neighbors = quadtree.query(canopy_search_area, [])
-        total_canopy_competition_mass = 0
         for neighbor in canopy_neighbors:
             if neighbor is self or not isinstance(neighbor, Plant): continue
-            # Check for physical overlap based on radius
-            dist_sq = (self.x - neighbor.x)**2 + (self.y - neighbor.y)**2
-            if dist_sq < (self.radius + neighbor.radius)**2:
-                total_canopy_competition_mass += neighbor.radius**2
-        canopy_competition_factor = 1 / (1 + total_canopy_competition_mass * C.PLANT_COMPETITION_MASS_FACTOR)
+            dist = math.sqrt((self.x - neighbor.x)**2 + (self.y - neighbor.y)**2)
+            if dist < self.radius + neighbor.radius:
+                total_shaded_canopy_area += self._calculate_circle_intersection_area(dist, self.radius, neighbor.radius)
 
         # --- Root Competition (for water/nutrients) ---
-        root_search_area = Rectangle(self.x, self.y, self.root_radius, self.root_radius)
+        root_search_area = Rectangle(self.x, self.y, self.root_radius * 2, self.root_radius * 2)
         root_neighbors = quadtree.query(root_search_area, [])
-        total_root_competition_mass = 0
         for neighbor in root_neighbors:
             if neighbor is self or not isinstance(neighbor, Plant): continue
-            # Check for physical overlap based on root radius
-            dist_sq = (self.x - neighbor.x)**2 + (self.y - neighbor.y)**2
-            if dist_sq < (self.root_radius + neighbor.root_radius)**2:
-                total_root_competition_mass += neighbor.root_radius**2
-        root_competition_factor = 1 / (1 + total_root_competition_mass * C.PLANT_COMPETITION_MASS_FACTOR)
+            dist = math.sqrt((self.x - neighbor.x)**2 + (self.y - neighbor.y)**2)
+            if dist < self.root_radius + neighbor.root_radius:
+                total_overlapped_root_area += self._calculate_circle_intersection_area(dist, self.root_radius, neighbor.root_radius)
 
-        return canopy_competition_factor, root_competition_factor
+        # A plant's shaded area cannot exceed its own total area.
+        my_canopy_area = math.pi * self.radius**2
+        my_root_area = math.pi * self.root_radius**2
+        
+        return min(total_shaded_canopy_area, my_canopy_area), min(total_overlapped_root_area, my_root_area)
 
-    # --- MAJOR CHANGE: The update logic is now much cleaner. ---
     def update(self, world, time_step):
         """
         Runs the core biological logic for a fixed time_step.
@@ -123,10 +143,10 @@ class Plant(Creature):
 
         # --- CORE BIOLOGY LOGIC (Calculations now use time_step directly) ---
         self.competition_update_accumulator += time_step
-        canopy_competition, root_competition = 1.0, 1.0
+        
+        shaded_canopy_area, overlapped_root_area = 0, 0
         if self.competition_update_accumulator >= C.PLANT_COMPETITION_UPDATE_INTERVAL_SECONDS:
-            canopy_competition, root_competition = self.calculate_competition_factor(world.quadtree)
-            self.competition_factor = canopy_competition * root_competition
+            shaded_canopy_area, overlapped_root_area = self.calculate_physical_overlap(world.quadtree)
             self.competition_update_accumulator %= C.PLANT_COMPETITION_UPDATE_INTERVAL_SECONDS
 
         max_soil_eff = self.genes.soil_efficiency.get(self.soil_type, 0)
@@ -136,18 +156,22 @@ class Plant(Creature):
         
         canopy_area = math.pi * self.radius**2
         root_area = math.pi * self.root_radius**2
-        photosynthesis_gain = canopy_area * C.PLANT_PHOTOSYNTHESIS_PER_AREA * self.environment_eff * soil_eff * canopy_competition * aging_efficiency * time_step
+
+        # --- NEW: Photosynthesis is based on EFFECTIVE (un-shaded) canopy area ---
+        effective_canopy_area = max(0, canopy_area - shaded_canopy_area)
+        photosynthesis_gain = effective_canopy_area * C.PLANT_PHOTOSYNTHESIS_PER_AREA * self.environment_eff * soil_eff * aging_efficiency * time_step
         
+        # --- Metabolism cost is based on TOTAL biomass (both shaded and unshaded) ---
         temp_difference = self.temperature - C.PLANT_RESPIRATION_REFERENCE_TEMP
         respiration_factor = C.PLANT_Q10_FACTOR ** (temp_difference / C.PLANT_Q10_INTERVAL_DIVISOR)
-        metabolism_cost = (canopy_area + root_area) * C.PLANT_BASE_MAINTENANCE_RESPIRATION_PER_AREA * respiration_factor * self.competition_factor * time_step
+        metabolism_cost = (canopy_area + root_area) * C.PLANT_BASE_MAINTENANCE_RESPIRATION_PER_AREA * respiration_factor * time_step
         
         net_energy_production = photosynthesis_gain - metabolism_cost
         self.energy += net_energy_production
 
         if is_debug_focused:
             log.log(f"    Efficiencies: Env={self.environment_eff:.3f}, Soil={soil_eff:.3f}, Aging={aging_efficiency:.3f}")
-            log.log(f"    Competition: Canopy={canopy_competition:.3f}, Root={root_competition:.3f}, Combined={self.competition_factor:.3f}")
+            log.log(f"    Competition: ShadedCanopyArea={shaded_canopy_area:.2f}, OverlappedRootArea={overlapped_root_area:.2f}")
             log.log(f"    Energy: Gained={photosynthesis_gain:.4f}, Lost={metabolism_cost:.4f}, Net={net_energy_production:.4f}")
 
         if self.energy <= 0:
