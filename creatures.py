@@ -104,13 +104,14 @@ class Plant(Creature):
         total_overlapped_root_area = 0
 
         # --- Canopy Competition (for light) ---
-        canopy_search_area = Rectangle(self.x, self.y, self.radius * 2, self.radius * 2)
+        # Use a fixed search radius to find all potential competitors, preventing small plants from missing large neighbors.
+        canopy_search_area = Rectangle(self.x, self.y, C.PLANT_SEED_SPREAD_RADIUS_CM, C.PLANT_SEED_SPREAD_RADIUS_CM)
         canopy_neighbors = quadtree.query(canopy_search_area, [])
         for neighbor in canopy_neighbors:
             if neighbor is self or not isinstance(neighbor, Plant): continue
             
-            # --- NEW: Height-based competition rule ---
-            # If the neighbor is shorter or the same height, it cannot shade us. Skip it.
+            # --- Height-based competition rule ---
+            # If we are taller or the same height, the neighbor cannot shade us. Skip it.
             if self.height >= neighbor.height:
                 continue
 
@@ -119,7 +120,8 @@ class Plant(Creature):
                 total_shaded_canopy_area += self._calculate_circle_intersection_area(dist, self.radius, neighbor.radius)
 
         # --- Root Competition (for water/nutrients) - Unchanged by height ---
-        root_search_area = Rectangle(self.x, self.y, self.root_radius * 2, self.root_radius * 2)
+        # Use a fixed search radius for consistency with canopy search.
+        root_search_area = Rectangle(self.x, self.y, C.PLANT_SEED_SPREAD_RADIUS_CM, C.PLANT_SEED_SPREAD_RADIUS_CM)
         root_neighbors = quadtree.query(root_search_area, [])
         for neighbor in root_neighbors:
             if neighbor is self or not isinstance(neighbor, Plant): continue
