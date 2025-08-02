@@ -145,9 +145,9 @@ INITIAL_PLANT_POSITION = (50000, 50000)
 INITIAL_ANIMAL_POSITION = (51000, 51000)
 
 # --- Reproduction ---
-# These values must be achievable after a period of net energy gain.
-CREATURE_REPRODUCTION_ENERGY_THRESHOLD = 6000.0 # Joules
-CREATURE_REPRODUCTION_ENERGY_COST = 3000.0      # Joules
+# The energy required to create a new offspring. This is transferred from the parent.
+# The parent must have this much energy stored before it can reproduce.
+CREATURE_REPRODUCTION_ENERGY_COST = CREATURE_INITIAL_ENERGY # Joules
 
 CREATURE_ID_MIN = 1000
 CREATURE_ID_MAX = 9999
@@ -162,9 +162,6 @@ PLANT_GROWTH_INVESTMENT_J_PER_HOUR = 900.0
 # The energy threshold below which a plant will stop investing in growth to conserve energy.
 # It will not spend its last reserves on growing.
 PLANT_GROWTH_INVESTMENT_ENERGY_RESERVE = 10000.0
-
-# The mandatory waiting period (in seconds) after reproduction before trying again.
-PLANT_REPRODUCTION_COOLDOWN_SECONDS = 2592000.0 # (30 days)
 
 # The interval (in sim seconds) for a plant to re-calculate its competition.
 PLANT_COMPETITION_UPDATE_INTERVAL_SECONDS = 1.0

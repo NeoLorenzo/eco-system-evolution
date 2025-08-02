@@ -29,7 +29,8 @@ class Creature:
             world.report_death(self)
 
     def can_reproduce(self):
-        return self.energy >= C.CREATURE_REPRODUCTION_ENERGY_THRESHOLD
+        # A creature can reproduce if it has stored enough energy to pay the full cost of a new offspring.
+        return self.energy >= C.CREATURE_REPRODUCTION_ENERGY_COST
 
     def reproduce(self, world, quadtree):
         log.log(f"DEBUG ({self.id}): Attempting to reproduce.")
@@ -77,7 +78,6 @@ class Plant(Creature):
         self.genes = PlantGenes()
         self.radius = C.PLANT_INITIAL_RADIUS_CM  # Canopy radius, in centimeters (cm)
         self.root_radius = C.PLANT_INITIAL_ROOT_RADIUS_CM  # Root system radius, in centimeters (cm)
-        self.reproduction_cooldown = 0.0  # Time remaining until it can reproduce again, in seconds (s)
         self.competition_factor = 1.0  # Efficiency multiplier based on nearby plants, unitless [0, 1]
         self.competition_update_accumulator = 0.0  # Time since last competition check, in seconds (s)
         self.has_reached_self_sufficiency = False # Has the plant ever had a positive energy balance?
@@ -154,10 +154,7 @@ class Plant(Creature):
             log.log(f"  Processing a single consolidated tick of {time_step:.2f}s.")
             log.log(f"    State: Energy={self.energy:.2f}, Radius={self.radius:.2f}, RootRadius={self.root_radius:.2f}")
 
-        was_ready_to_reproduce = self.reproduction_cooldown <= 0
-
         # --- CORE BIOLOGY LOGIC (Calculations now use time_step directly) ---
-        self.reproduction_cooldown = max(0, self.reproduction_cooldown - time_step)
         self.competition_update_accumulator += time_step
         
         canopy_competition, root_competition = 1.0, 1.0
@@ -200,12 +197,17 @@ class Plant(Creature):
             if is_debug_focused:
                 log.log(f"    MILESTONE: Plant {self.id} has reached self-sufficiency!")
 
-        if was_ready_to_reproduce and self.can_reproduce() and not self.is_overcrowded(world.quadtree):
-            if is_debug_focused: log.log("    Reproduction Check: Was ready, has energy. Attempting to spawn.")
+        # --- Reproduction Logic ---
+        # A plant can reproduce only if it has a NET ENERGY SURPLUS from this tick,
+        # has stored enough total energy to create a seed, and is not overcrowded.
+        # The "cooldown" is now an emergent property of how long it takes to save this energy.
+        if net_energy_production > 0 and self.can_reproduce() and not self.is_overcrowded(world.quadtree):
+            if is_debug_focused: log.log(f"    Reproduction Check: Net surplus, has {self.energy:.2f} J energy. Attempting to spawn.")
             new_plant = self.reproduce(world, world.quadtree)
             if new_plant:
                 world.add_newborn(new_plant)
-                self.reproduction_cooldown = C.PLANT_REPRODUCTION_COOLDOWN_SECONDS
+                # No cooldown to set. The energy cost itself is the cooldown.
+                if is_debug_focused: log.log(f"    Reproduction SUCCESS. Energy remaining: {self.energy:.2f} J.")
         
                 # --- Growth Logic ---
         growth_energy = 0
@@ -288,7 +290,7 @@ class Plant(Creature):
         canopy_radius = camera.scale(self.radius)
         if canopy_radius >= 1:
             canopy_surface = pygame.Surface((canopy_radius * 2, canopy_radius * 2), pygame.SRCALPHA)
-            health_ratio = min(1.0, max(0.0, self.energy / C.CREATURE_REPRODUCTION_ENERGY_THRESHOLD))
+            health_ratio = min(1.0, max(0.0, self.energy / C.CREATURE_REPRODUCTION_ENERGY_COST))
             canopy_color = lerp_color(C.COLOR_PLANT_CANOPY_SICKLY, C.COLOR_PLANT_CANOPY_HEALTHY, health_ratio)
             pygame.draw.circle(canopy_surface, canopy_color, (canopy_radius, canopy_radius), canopy_radius)
             screen.blit(canopy_surface, (screen_pos[0] - canopy_radius, screen_pos[1] - canopy_radius))
