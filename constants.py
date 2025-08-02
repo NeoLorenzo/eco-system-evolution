@@ -155,7 +155,7 @@ CREATURE_ID_MAX = 9999
 # --- PLANTS ---
 # =============================================================================
 # The mandatory waiting period (in seconds) after reproduction before trying again.
-PLANT_REPRODUCTION_COOLDOWN_SECONDS = 31536000.0 # (365 days)
+PLANT_REPRODUCTION_COOLDOWN_SECONDS = 2592000.0 # (30 days)
 
 # The interval (in sim seconds) for a plant to re-calculate its competition.
 PLANT_COMPETITION_UPDATE_INTERVAL_SECONDS = 1.0
