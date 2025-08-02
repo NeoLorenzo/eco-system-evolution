@@ -14,10 +14,10 @@ def lerp_color(c1, c2, t):
 
 class Creature:
     def __init__(self, x, y):
-        self.x = x
-        self.y = y
-        self.energy = C.CREATURE_INITIAL_ENERGY
-        self.age = 0
+        self.x = x  # World coordinate, in centimeters (cm)
+        self.y = y  # World coordinate, in centimeters (cm)
+        self.energy = C.CREATURE_INITIAL_ENERGY  # Stored energy, in Joules (J)
+        self.age = 0  # Age of the creature, in seconds (s)
         self.is_alive = True
         self.id = random.randint(C.CREATURE_ID_MIN, C.CREATURE_ID_MAX)
         log.log(f"DEBUG: Creature {self.id} created at ({x:.0f}, {y:.0f}). Initial Energy: {self.energy}")
@@ -75,14 +75,14 @@ class Plant(Creature):
         super().__init__(x, y)
         log.log(f"DEBUG ({self.id}): Initializing as a Plant.")
         self.genes = PlantGenes()
-        self.radius = C.PLANT_INITIAL_RADIUS_CM
-        self.root_radius = C.PLANT_INITIAL_ROOT_RADIUS_CM
-        self.reproduction_cooldown = 0.0
-        self.competition_factor = 1.0
-        self.competition_update_accumulator = 0.0
+        self.radius = C.PLANT_INITIAL_RADIUS_CM  # Canopy radius, in centimeters (cm)
+        self.root_radius = C.PLANT_INITIAL_ROOT_RADIUS_CM  # Root system radius, in centimeters (cm)
+        self.reproduction_cooldown = 0.0  # Time remaining until it can reproduce again, in seconds (s)
+        self.competition_factor = 1.0  # Efficiency multiplier based on nearby plants, unitless [0, 1]
+        self.competition_update_accumulator = 0.0  # Time since last competition check, in seconds (s)
 
-        self.elevation = world.environment.get_elevation(self.x, self.y)
-        self.soil_type = self.get_soil_type(self.elevation)
+        self.elevation = world.environment.get_elevation(self.x, self.y)  # Cached elevation, unitless [0, 1]
+        self.soil_type = self.get_soil_type(self.elevation)  # Type of soil at location (e.g., "sand", "grass")
         log.log(f"DEBUG ({self.id}): Environment check: Elevation={self.elevation:.2f}, Soil='{self.soil_type}'")
         
         if self.soil_type is None:
@@ -230,8 +230,8 @@ class Plant(Creature):
 class Animal(Creature):
     def __init__(self, x, y):
         super().__init__(x, y)
-        self.width = C.ANIMAL_INITIAL_WIDTH_CM
-        self.height = C.ANIMAL_INITIAL_HEIGHT_CM
+        self.width = C.ANIMAL_INITIAL_WIDTH_CM  # Width of the animal, in centimeters (cm)
+        self.height = C.ANIMAL_INITIAL_HEIGHT_CM  # Height of the animal, in centimeters (cm)
         self.color = C.COLOR_BLUE
         self.target_plant = None
 

@@ -5,11 +5,10 @@ import constants as C
 
 class Camera:
     def __init__(self):
-        self.x = C.WORLD_WIDTH_CM / 2
-        self.y = C.WORLD_HEIGHT_CM / 2
-        self.zoom = 1.0
+        self.x = C.WORLD_WIDTH_CM / 2  # Camera's center x-position in world coordinates (cm)
+        self.y = C.WORLD_HEIGHT_CM / 2  # Camera's center y-position in world coordinates (cm)
+        self.zoom = 1.0  # Zoom level multiplier, unitless
         self.dirty = True
-        # --- NEW: A flag to specifically track zoom changes for rendering optimization. ---
         self.zoom_changed = True 
         print(f"Camera initialized at world coordinates ({self.x:.0f}, {self.y:.0f}) with zoom {self.zoom:.2f}")
 
