@@ -223,13 +223,15 @@ class Plant(Creature):
         
                 # --- Growth Logic ---
         growth_energy = 0
-        # CASE 1: The plant has a net energy surplus. It can always grow.
+        # CASE 1: The plant has a net energy surplus. It can always grow by investing the surplus.
         if net_energy_production > 0:
             growth_energy = net_energy_production
             if is_debug_focused: log.log(f"    Growth Check (Surplus of {net_energy_production:.4f} J): Investing surplus.")
 
-        # CASE 2: The plant has a deficit, but is still a "seedling" that has never been self-sufficient.
-        elif not self.has_reached_self_sufficiency:
+        # CASE 2: The plant has a deficit. It can still grow by investing its stored energy reserves,
+        # as long as it stays above the emergency reserve threshold. This allows a juvenile plant
+        # to push past the break-even point into robust profitability.
+        else:
             if self.energy > C.PLANT_GROWTH_INVESTMENT_ENERGY_RESERVE:
                 investment_per_second = C.PLANT_GROWTH_INVESTMENT_J_PER_HOUR / C.SECONDS_PER_HOUR
                 investment_amount = investment_per_second * time_step
@@ -239,17 +241,12 @@ class Plant(Creature):
                 if investment_amount > 0:
                     growth_energy = investment_amount
                     self.energy -= investment_amount # Pay for the growth from our reserves.
-                    if is_debug_focused: log.log(f"    Growth Check (Deficit of {net_energy_production:.4f} J): Investing {investment_amount:.4f} J from reserves (Seedling).")
+                    if is_debug_focused: log.log(f"    Growth Check (Deficit of {net_energy_production:.4f} J): Investing {investment_amount:.4f} J from reserves.")
                 elif is_debug_focused:
                     log.log(f"    Growth Check (Deficit of {net_energy_production:.4f} J): Cannot invest, reserves too low.")
             else:
                  if is_debug_focused:
                     log.log(f"    Growth Check (Deficit of {net_energy_production:.4f} J): CANNOT GROW (Reserves below threshold).")
-        
-        # CASE 3: The plant has a deficit and is "mature" (has been self-sufficient before). It cannot grow.
-        else:
-            if is_debug_focused:
-                log.log(f"    Growth Check (Deficit of {net_energy_production:.4f} J): CANNOT GROW (Mature plant, no energy surplus).")
 
         if growth_energy > 0:
             total_added_biomass = growth_energy / C.PLANT_BIOMASS_ENERGY_COST
