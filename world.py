@@ -182,32 +182,30 @@ class World:
         start_time = self.time_manager.total_sim_seconds
         end_time = start_time + large_delta_time
 
-        # --- Step 1: Gather all events within the time window ---
-        events = {}
-        
-        # Gather plant events
-        plant_keys_to_process = [t for t in self.plant_update_schedule.keys() if start_time <= t < end_time]
-        for t in plant_keys_to_process:
-            if t not in events: events[t] = []
-            events[t].extend(self.plant_update_schedule.pop(t))
+        # --- NEW: Continuously process events in a loop until the time window is filled ---
+        while True:
+            # Find the time of the very next scheduled event, if any
+            next_plant_time = min(self.plant_update_schedule.keys()) if self.plant_update_schedule else float('inf')
+            next_animal_time = min(self.animal_update_schedule.keys()) if self.animal_update_schedule else float('inf')
+            next_event_time = min(next_plant_time, next_animal_time)
 
-        # Gather animal events
-        animal_keys_to_process = [t for t in self.animal_update_schedule.keys() if start_time <= t < end_time]
-        for t in animal_keys_to_process:
-            if t not in events: events[t] = []
-            events[t].extend(self.animal_update_schedule.pop(t))
+            # If the next event is outside our current time slice, stop processing for this frame.
+            if next_event_time >= end_time:
+                break
 
-        # --- Step 2: Process events in strict chronological order ---
-        sorted_event_times = sorted(events.keys())
-
-        for event_time in sorted_event_times:
             # Set the world clock to the exact time of the current event
-            self.time_manager.total_sim_seconds = event_time
+            self.time_manager.total_sim_seconds = next_event_time
             
-            creatures_to_update = events[event_time]
+            # Pop the creatures scheduled for this exact time from the schedule
+            creatures_to_update = []
+            if next_event_time in self.plant_update_schedule:
+                creatures_to_update.extend(self.plant_update_schedule.pop(next_event_time))
+            if next_event_time in self.animal_update_schedule:
+                creatures_to_update.extend(self.animal_update_schedule.pop(next_event_time))
+
+            # Process the creatures for this event time
             for creature in creatures_to_update:
                 if creature.is_alive:
-                    # Determine the correct time step for this creature's update
                     if isinstance(creature, Plant):
                         time_step = C.PLANT_LOGIC_UPDATE_INTERVAL_SECONDS
                         creature.update(self, time_step)
@@ -218,8 +216,8 @@ class World:
                         creature.update(self, time_step)
                         if creature.is_alive:
                             self.schedule_animal_update(creature, time_step)
-
-        # --- Step 3: Finalize the time update and clean up ---
+        
+        # --- Finalize the time update and clean up ---
         self.time_manager.total_sim_seconds = end_time
         self._process_housekeeping()
 
