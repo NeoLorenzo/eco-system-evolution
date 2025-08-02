@@ -126,7 +126,7 @@ PLANT_PHOTOSYNTHESIS_PER_AREA = (SOLAR_IRRADIANCE_W_PER_M2 * PHOTOSYNTHETIC_EFFI
 # PLANT_METABOLISM_PER_AREA = PLANT_PHOTOSYNTHESIS_PER_AREA * PLANT_RESPIRATION_FRAC_OF_GPP
 
 # The base rate of energy consumption for maintenance respiration at the reference temperature.
-# This is now an independent biological constant.
+# This is based on the total 2D area of the plant's canopy and roots.
 # Units: J/s/cm^2 (Joules per second per square centimeter of total biomass area)
 PLANT_BASE_MAINTENANCE_RESPIRATION_PER_AREA = 0.00075
 
@@ -216,9 +216,10 @@ PLANT_INITIAL_HEIGHT_CM = 5 # A new plant starts short.
 PLANT_CORE_RADIUS_FACTOR = 0.25
 
 # --- NEW: Growth Allocation ---
-# The ratio of canopy growth energy invested in growing taller vs. wider.
-# 0.0 = all growth goes to radius; 1.0 = all growth goes to height.
-PLANT_HEIGHT_INVESTMENT_RATIO = 0.4
+# Height is now an emergent property of the plant's radius, not a direct investment.
+# This factor determines how tall a plant is relative to its width.
+# Unit: Unitless ratio
+PLANT_RADIUS_TO_HEIGHT_FACTOR = 0.5
 
 # --- Reproduction & Spacing ---
 PLANT_MAX_NEIGHBORS = 5

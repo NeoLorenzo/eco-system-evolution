@@ -45,7 +45,8 @@ class Plant(Creature):
         log.log(f"DEBUG ({self.id}): Initializing as a Plant.")
         self.genes = PlantGenes()
         self.radius = C.PLANT_INITIAL_RADIUS_CM # Canopy radius, in centimeters (cm)
-        self.height = C.PLANT_INITIAL_HEIGHT_CM # Canopy height, in centimeters (cm)
+        # Height is now an emergent property derived from the radius.
+        self.height = self.radius * C.PLANT_RADIUS_TO_HEIGHT_FACTOR # Canopy height, in centimeters (cm)
         self.root_radius = C.PLANT_INITIAL_ROOT_RADIUS_CM # Root system radius, in centimeters (cm)
         self.reproductive_energy_stored = 0.0 # Energy invested in reproductive structures, in Joules (J)
         self.competition_factor = 1.0 # DEPRECATED, will be removed later.
@@ -167,7 +168,7 @@ class Plant(Creature):
         effective_canopy_area = max(0, canopy_area - shaded_canopy_area)
         photosynthesis_gain = effective_canopy_area * C.PLANT_PHOTOSYNTHESIS_PER_AREA * self.environment_eff * soil_eff * aging_efficiency * time_step
         
-        # --- Metabolism cost is based on TOTAL biomass (both shaded and unshaded) ---
+        # --- Metabolism cost is based on TOTAL biomass AREA (canopy area + root area) ---
         temp_difference = self.temperature - C.PLANT_RESPIRATION_REFERENCE_TEMP
         respiration_factor = C.PLANT_Q10_FACTOR ** (temp_difference / C.PLANT_Q10_INTERVAL_DIVISOR)
         metabolism_cost = (canopy_area + root_area) * C.PLANT_BASE_MAINTENANCE_RESPIRATION_PER_AREA * respiration_factor * time_step
@@ -221,45 +222,36 @@ class Plant(Creature):
                 world.add_newborn(new_plant)
                 if is_debug_focused: log.log(f"    Reproduction SUCCESS. Energy remaining: {self.energy:.2f} J, ReproEnergy: {self.reproductive_energy_stored:.2f} J.")
         
-        # --- Growth Logic ---
+        # --- Growth Logic (2D Area-Based Model) ---
         if growth_energy > 0:
-            if is_debug_focused: log.log(f"      - Growth investment of {growth_energy:.4f} J.")
-
             total_limitation = self.environment_eff + soil_eff
             if total_limitation > 0:
-                # Allocate overall energy between canopy (3D) and roots (2D)
+                # --- 1. Calculate total new area to be grown ---
+                # The cost is for growing 2D area, not 3D volume.
+                added_biomass_area = growth_energy / C.PLANT_BIOMASS_ENERGY_COST
+
+                # --- 2. Allocate new area between canopy and roots ---
+                # This logic is sound: invest more in roots if light/air is good, more in canopy if soil is good.
                 canopy_alloc_factor = soil_eff / total_limitation
                 root_alloc_factor = self.environment_eff / total_limitation
                 
-                canopy_investment_energy = growth_energy * canopy_alloc_factor
-                root_investment_energy = growth_energy * root_alloc_factor
+                added_canopy_area = added_biomass_area * canopy_alloc_factor
+                added_root_area = added_biomass_area * root_alloc_factor
 
-                # --- 1. Grow Canopy (3D Volume) ---
-                added_canopy_volume = canopy_investment_energy / C.PLANT_CANOPY_BIOMASS_ENERGY_COST
+                # --- 3. Update radii from new areas ---
+                new_canopy_area = canopy_area + added_canopy_area
+                self.radius = math.sqrt(new_canopy_area / math.pi)
                 
-                # Allocate canopy volume between height and radius
-                volume_for_height = added_canopy_volume * C.PLANT_HEIGHT_INVESTMENT_RATIO
-                volume_for_radius = added_canopy_volume * (1 - C.PLANT_HEIGHT_INVESTMENT_RATIO)
-
-                # dV = (pi * r^2) * dh  =>  dh = dV / (pi * r^2)
-                if self.radius > 0:
-                    delta_height = volume_for_height / (math.pi * self.radius**2)
-                    self.height += delta_height
-                
-                # dV = (2 * pi * r * h) * dr => dr = dV / (2 * pi * r * h)
-                if self.radius > 0 and self.height > 0:
-                    delta_radius = volume_for_radius / (2 * math.pi * self.radius * self.height)
-                    self.radius += delta_radius
-
-                # --- 2. Grow Roots (2D Area) ---
-                added_root_area = root_investment_energy / C.PLANT_BIOMASS_ENERGY_COST
                 new_root_area = root_area + added_root_area
                 self.root_radius = math.sqrt(new_root_area / math.pi)
 
+                # --- 4. Update height as an emergent property of the new radius ---
+                self.height = self.radius * C.PLANT_RADIUS_TO_HEIGHT_FACTOR
+
                 if is_debug_focused:
-                    log.log(f"      - Root/Canopy Split: {canopy_investment_energy:.4f} J to Canopy, {root_investment_energy:.4f} J to Roots.")
-                    log.log(f"      - Canopy Growth: {added_canopy_volume:.4f} cm^3 -> {C.PLANT_HEIGHT_INVESTMENT_RATIO*100:.1f}% for Height, {(1-C.PLANT_HEIGHT_INVESTMENT_RATIO)*100:.1f}% for Radius.")
-                    log.log(f"      - New State: Radius={self.radius:.4f}, Height={self.height:.4f}, RootRadius={self.root_radius:.4f}")
+                    log.log(f"      - Growth Investment: {growth_energy:.2f} J -> {added_biomass_area:.2f} cm^2 total new area.")
+                    log.log(f"      - Area Allocation: {added_canopy_area:.2f} cm^2 to Canopy, {added_root_area:.2f} cm^2 to Roots.")
+                    log.log(f"      - New State: Radius={self.radius:.2f}, Height={self.height:.2f}, RootRadius={self.root_radius:.2f}")
 
             elif is_debug_focused:
                 log.log(f"      - Decision: CANNOT GROW (Total limitation factor is zero).")
@@ -288,7 +280,6 @@ class Plant(Creature):
         Overrides the base Creature method. Finds a valid spawn location and creates a new Plant
         with a specific provision of energy transferred from the parent.
         """
-        log.log(f"DEBUG ({self.id}): Attempting to reproduce.")
         
         # --- 1. Find a suitable location for the offspring ---
         spread_area = Rectangle(self.x, self.y, C.PLANT_SEED_SPREAD_RADIUS_CM, C.PLANT_SEED_SPREAD_RADIUS_CM)
