@@ -1,4 +1,4 @@
-# creatures.py (YOUR LOGIC, WITH FULL DEBUG MESSAGES)
+# creatures.py
 
 import pygame
 import constants as C

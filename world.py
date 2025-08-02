@@ -251,8 +251,6 @@ class World:
                 else:
                     self.debug_focused_creature_id = plant.id
                     log.log(f"DEBUG: Now focusing on Plant ID: {plant.id}. Detailed logs enabled.")
-
-                plant.print_debug_report()
                 return
             
     def _print_population_statistics(self):
