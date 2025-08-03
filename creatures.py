@@ -103,29 +103,24 @@ class Plant(Creature):
         total_shaded_canopy_area = 0
         total_overlapped_root_area = 0
 
-        # --- Canopy Competition (for light) ---
-        # Use a fixed search radius to find all potential competitors, preventing small plants from missing large neighbors.
-        canopy_search_area = Rectangle(self.x, self.y, C.PLANT_SEED_SPREAD_RADIUS_CM, C.PLANT_SEED_SPREAD_RADIUS_CM)
-        canopy_neighbors = quadtree.query(canopy_search_area, [])
-        for neighbor in canopy_neighbors:
-            if neighbor is self or not isinstance(neighbor, Plant): continue
-            
-            # --- Height-based competition rule ---
-            # If we are taller or the same height, the neighbor cannot shade us. Skip it.
-            if self.height >= neighbor.height:
+        # --- OPTIMIZATION: Query for neighbors only ONCE ---
+        # The search radius for canopy and root competition is the same, so we can reuse the result.
+        search_area = Rectangle(self.x, self.y, C.PLANT_SEED_SPREAD_RADIUS_CM, C.PLANT_SEED_SPREAD_RADIUS_CM)
+        neighbors = quadtree.query(search_area, [])
+
+        for neighbor in neighbors:
+            if neighbor is self or not isinstance(neighbor, Plant):
                 continue
 
             dist = math.sqrt((self.x - neighbor.x)**2 + (self.y - neighbor.y)**2)
-            if dist < self.radius + neighbor.radius:
-                total_shaded_canopy_area += self._calculate_circle_intersection_area(dist, self.radius, neighbor.radius)
 
-        # --- Root Competition (for water/nutrients) - Unchanged by height ---
-        # Use a fixed search radius for consistency with canopy search.
-        root_search_area = Rectangle(self.x, self.y, C.PLANT_SEED_SPREAD_RADIUS_CM, C.PLANT_SEED_SPREAD_RADIUS_CM)
-        root_neighbors = quadtree.query(root_search_area, [])
-        for neighbor in root_neighbors:
-            if neighbor is self or not isinstance(neighbor, Plant): continue
-            dist = math.sqrt((self.x - neighbor.x)**2 + (self.y - neighbor.y)**2)
+            # --- Canopy Competition (for light) ---
+            # If we are taller or the same height, the neighbor cannot shade us.
+            if self.height < neighbor.height:
+                if dist < self.radius + neighbor.radius:
+                    total_shaded_canopy_area += self._calculate_circle_intersection_area(dist, self.radius, neighbor.radius)
+
+            # --- Root Competition (for water/nutrients) ---
             if dist < self.root_radius + neighbor.root_radius:
                 total_overlapped_root_area += self._calculate_circle_intersection_area(dist, self.root_radius, neighbor.root_radius)
 
