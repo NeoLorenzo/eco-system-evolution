@@ -274,7 +274,7 @@ PLANT_COMPETITION_MASS_FACTOR = 0.001
 # A safe, large radius used for broad-phase checks to ensure we don't miss
 # interactions with very large plants whose centers are far away.
 # Unit: Centimeters (cm)
-PLANT_MAX_INTERACTION_RADIUS_CM = 5000.0
+PLANT_MAX_INTERACTION_RADIUS_CM = 500000.0
 
 # =============================================================================
 # --- ANIMALS ---
