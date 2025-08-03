@@ -204,7 +204,8 @@ PLANT_GROWTH_INVESTMENT_J_PER_HOUR = 900.0
 PLANT_GROWTH_INVESTMENT_ENERGY_RESERVE = 10000.0
 
 # The interval (in sim seconds) for a plant to re-calculate its competition.
-PLANT_COMPETITION_UPDATE_INTERVAL_SECONDS = 1.0
+# This is a heavy calculation, so it should not be run frequently. Once a day is a reasonable starting point.
+PLANT_COMPETITION_UPDATE_INTERVAL_SECONDS = 86400.0 # (1 Day)
 
 # The interval (in sim seconds) at which a plant runs its main logic loop.
 # This is the fixed, discrete time-step for all biological calculations.

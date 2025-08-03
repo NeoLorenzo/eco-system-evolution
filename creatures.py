@@ -52,6 +52,8 @@ class Plant(Creature):
         self.competition_factor = 1.0 # DEPRECATED, will be removed later.
         self.competition_update_accumulator = 0.0 # Time since last competition check, in seconds (s)
         self.has_reached_self_sufficiency = False # Has the plant ever had a positive energy balance?
+        self.shaded_canopy_area = 0.0 # The area of our canopy shaded by neighbors, in cm^2
+        self.overlapped_root_area = 0.0 # The area of our roots competing with neighbors, in cm^2
 
         self.elevation = world.environment.get_elevation(self.x, self.y)  # Cached elevation, unitless [0, 1]
         self.soil_type = self.get_soil_type(self.elevation)  # Type of soil at location (e.g., "sand", "grass")
@@ -143,14 +145,14 @@ class Plant(Creature):
         if is_debug_focused:
             log.log(f"\n--- PLANT {self.id} LOGIC (Age: {self.age/C.SECONDS_PER_DAY:.1f} days) ---")
             log.log(f"  Processing a single consolidated tick of {time_step:.2f}s.")
-            log.log(f"    State: Energy={self.energy:.2f}, ReproEnergy={self.reproductive_energy_stored:.2f}, Radius={self.radius:.2f}, Height={self.height:.2f}")
+            log.log(f"    State: Energy={self.energy:.2f}, ReproEnergy={self.reproductive_energy_stored:.2f}, Radius={self.radius:.2f}, Height={self.height:.2f}, ShadedArea={self.shaded_canopy_area:.2f}")
 
         # --- CORE BIOLOGY LOGIC (Calculations now use time_step directly) ---
         self.competition_update_accumulator += time_step
         
-        shaded_canopy_area, overlapped_root_area = 0, 0
         if self.competition_update_accumulator >= C.PLANT_COMPETITION_UPDATE_INTERVAL_SECONDS:
-            shaded_canopy_area, overlapped_root_area = self.calculate_physical_overlap(world.quadtree)
+            log.log(f"DEBUG ({self.id}): Recalculating physical competition. Accumulator was {self.competition_update_accumulator:.1f}s.")
+            self.shaded_canopy_area, self.overlapped_root_area = self.calculate_physical_overlap(world.quadtree)
             self.competition_update_accumulator %= C.PLANT_COMPETITION_UPDATE_INTERVAL_SECONDS
 
         max_soil_eff = self.genes.soil_efficiency.get(self.soil_type, 0)
@@ -162,7 +164,7 @@ class Plant(Creature):
         root_area = math.pi * self.root_radius**2
 
         # --- NEW: Photosynthesis is based on EFFECTIVE (un-shaded) canopy area ---
-        effective_canopy_area = max(0, canopy_area - shaded_canopy_area)
+        effective_canopy_area = max(0, canopy_area - self.shaded_canopy_area)
         photosynthesis_gain = effective_canopy_area * C.PLANT_PHOTOSYNTHESIS_PER_AREA * self.environment_eff * soil_eff * aging_efficiency * time_step
         
         # --- Metabolism cost is based on TOTAL biomass AREA (canopy area + root area) ---
@@ -175,7 +177,7 @@ class Plant(Creature):
 
         if is_debug_focused:
             log.log(f"    Efficiencies: Env={self.environment_eff:.3f}, Soil={soil_eff:.3f}, Aging={aging_efficiency:.3f}")
-            log.log(f"    Competition: ShadedCanopyArea={shaded_canopy_area:.2f}, OverlappedRootArea={overlapped_root_area:.2f}")
+            log.log(f"    Competition: ShadedCanopyArea={self.shaded_canopy_area:.2f}, OverlappedRootArea={self.overlapped_root_area:.2f}")
             log.log(f"    Energy: Gained={photosynthesis_gain:.4f}, Lost={metabolism_cost:.4f}, Net={net_energy_production:.4f}")
 
         if self.energy <= 0:
