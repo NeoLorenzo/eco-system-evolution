@@ -261,6 +261,10 @@ class Plant(Creature):
     def update(self, world, time_step):
         if not self.is_alive: return
 
+        # --- NEW: Immediate physical checks before any other logic ---
+        if self._check_for_core_crush(world):
+            return # The plant was crushed, its turn is over.
+
         self.age += time_step
         is_debug_focused = (world.debug_focused_creature_id == self.id)
 
@@ -367,6 +371,36 @@ class Plant(Creature):
         core_radius = camera.scale(self.get_core_radius())
         if core_radius >= 1:
             pygame.draw.circle(screen, C.COLOR_PLANT_CORE, screen_pos, core_radius)
+
+    def _check_for_core_crush(self, world):
+        """Checks if a seed or seedling is inside the core of another plant. If so, it dies."""
+        # This check only applies to the most vulnerable life stages.
+        if self.life_stage not in ["seed", "seedling"]:
+            return False
+
+        # --- BUG FIX: Use a massive search radius to find all potential threats ---
+        # The previous, smaller radius failed to detect very large plants whose
+        # centers were far away but whose cores still overlapped the seedling.
+        search_radius = C.PLANT_MAX_INTERACTION_RADIUS_CM
+        search_area = Rectangle(self.x, self.y, search_radius, search_radius)
+        neighbors = world.quadtree.query(search_area, [])
+
+        for neighbor in neighbors:
+            # Can't be crushed by yourself, and must be a Plant.
+            if neighbor is self or not isinstance(neighbor, Plant):
+                continue
+
+            dist_sq = (self.x - neighbor.x)**2 + (self.y - neighbor.y)**2
+            neighbor_core_radius = neighbor.get_core_radius()
+
+            if dist_sq < neighbor_core_radius**2:
+                is_debug_focused = (world.debug_focused_creature_id == self.id or world.debug_focused_creature_id == neighbor.id)
+                if is_debug_focused:
+                    log.log(f"DEATH ({self.id}): Crushed by the core of Plant ID {neighbor.id}.")
+                self.die(world, "core_crush")
+                return True # Crushed, no need to check other neighbors.
+        
+        return False # Survived.
 
 class Animal(Creature):
     def __init__(self, x, y):
