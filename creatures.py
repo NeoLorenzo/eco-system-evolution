@@ -280,35 +280,41 @@ class Plant(Creature):
         with a specific provision of energy transferred from the parent.
         """
         
-        # --- 1. Find a suitable location for the offspring ---
-        spread_area = Rectangle(self.x, self.y, C.PLANT_SEED_SPREAD_RADIUS_CM, C.PLANT_SEED_SPREAD_RADIUS_CM)
-        neighbors_in_spread_area = quadtree.query(spread_area, [])
+        # --- 1. Find a suitable location for the offspring (OPTIMIZED) ---
+        # Instead of one large query, we do several small, fast queries at candidate locations.
         best_location = None
-        least_neighbors = float('inf')
-        for i in range(C.PLANT_REPRODUCTION_ATTEMPTS):
+        least_neighbors_at_best_loc = float('inf')
+
+        for _ in range(C.PLANT_REPRODUCTION_ATTEMPTS):
+            # Step A: Pick a random candidate location.
             spawn_angle = random.uniform(0, 2 * math.pi)
             spawn_dist = random.uniform(0, C.PLANT_SEED_SPREAD_RADIUS_CM)
             candidate_x = self.x + spawn_dist * math.cos(spawn_angle)
             candidate_y = self.y + spawn_dist * math.sin(spawn_angle)
-            is_valid = True
-            current_neighbors = 0
-            for neighbor in neighbors_in_spread_area:
-                if isinstance(neighbor, Plant):
-                    new_plant_personal_space = (1.0 * neighbor.genes.core_radius_factor) * C.PLANT_CORE_PERSONAL_SPACE_FACTOR
-                    min_dist = new_plant_personal_space + neighbor.get_personal_space_radius()
-                    dist_sq = (candidate_x - neighbor.x)**2 + (candidate_y - neighbor.y)**2
-                    if dist_sq < min_dist**2:
-                        is_valid = False
-                        break
-                    crowd_dist_sq = (candidate_x - neighbor.x)**2 + (candidate_y - neighbor.y)**2
-                    if crowd_dist_sq < C.PLANT_CROWDED_RADIUS_CM**2:
-                        current_neighbors += 1
-            if not is_valid:
-                continue
-            if current_neighbors < least_neighbors:
-                least_neighbors = current_neighbors
-                best_location = (candidate_x, candidate_y)
 
+            # Step B: Perform a small, localized query to check for immediate collisions.
+            # This is much faster than iterating through all neighbors in the larger spread radius.
+            personal_space_radius = (1.0 * self.genes.core_radius_factor) * C.PLANT_CORE_PERSONAL_SPACE_FACTOR
+            check_area = Rectangle(candidate_x, candidate_y, personal_space_radius, personal_space_radius)
+            immediate_neighbors = quadtree.query(check_area, [])
+
+            # If there's any plant in the immediate personal space, this spot is invalid.
+            if any(isinstance(p, Plant) for p in immediate_neighbors):
+                continue
+
+            # Step C: If the spot is valid, check for general crowding.
+            crowd_check_area = Rectangle(candidate_x, candidate_y, C.PLANT_CROWDED_RADIUS_CM, C.PLANT_CROWDED_RADIUS_CM)
+            crowd_neighbors = quadtree.query(crowd_check_area, [])
+            num_crowd_neighbors = len([p for p in crowd_neighbors if isinstance(p, Plant)])
+
+            # Step D: If this is the best spot found so far, save it.
+            if num_crowd_neighbors < least_neighbors_at_best_loc:
+                least_neighbors_at_best_loc = num_crowd_neighbors
+                best_location = (candidate_x, candidate_y)
+                # If we find a spot with 0 neighbors, it's perfect. No need to search further.
+                if least_neighbors_at_best_loc == 0:
+                    break
+        
         # --- 2. If a location is found, pay the costs and create the new plant ---
         if best_location:
             log.log(f"DEBUG ({self.id}): Found a valid spawn location. Paying costs.")
