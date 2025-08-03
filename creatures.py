@@ -44,8 +44,7 @@ class Plant(Creature):
         
         # --- NEW: Life Cycle State ---
         self.life_stage = "seed" # Start as a seed
-        log.log(f"DEBUG ({self.id}): New plant created as a seed with {self.energy:.2f} J energy.")
-
+        
         # Physical properties are 0 until sprouting.
         self.radius = 0 # Canopy radius, in centimeters (cm)
         self.height = 0 # Canopy height, in centimeters (cm)
@@ -152,10 +151,9 @@ class Plant(Creature):
             if self.energy >= C.PLANT_SPROUTING_ENERGY_COST:
                 self.energy -= C.PLANT_SPROUTING_ENERGY_COST
                 self.life_stage = "seedling"
-                self.radius = C.PLANT_INITIAL_RADIUS_CM
-                self.root_radius = C.PLANT_INITIAL_ROOT_RADIUS_CM
+                self.radius = C.PLANT_SPROUT_RADIUS_CM
+                self.root_radius = C.PLANT_SPROUT_RADIUS_CM
                 self.height = self.radius * C.PLANT_RADIUS_TO_HEIGHT_FACTOR
-                log.log(f"SUCCESS ({self.id}): Seed sprouted into a seedling! Energy left: {self.energy:.2f} J.")
             elif is_debug_focused:
                 log.log(f"DEBUG ({self.id}): Conditions met to sprout, but not enough energy ({self.energy:.2f} < {C.PLANT_SPROUTING_ENERGY_COST}).")
         elif is_debug_focused:

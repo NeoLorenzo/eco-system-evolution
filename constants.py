@@ -234,8 +234,10 @@ PLANT_COMPETITION_UPDATE_INTERVAL_SECONDS = 86400.0 # (1 Day)
 PLANT_LOGIC_UPDATE_INTERVAL_SECONDS = 3600.0 # (1 Hour)
 
 # --- Initial Properties & Size ---
-PLANT_INITIAL_RADIUS_CM = 10
-PLANT_INITIAL_HEIGHT_CM = 5 # A new plant starts short.
+# The initial radius of a seedling's canopy and roots right after sprouting.
+# Unit: Centimeters (cm)
+PLANT_SPROUT_RADIUS_CM = 1.0
+
 PLANT_CORE_RADIUS_FACTOR = 0.25
 
 # --- NEW: Growth Allocation ---
