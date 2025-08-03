@@ -49,6 +49,7 @@ class Plant(Creature):
         self.radius = 0 # Canopy radius, in centimeters (cm)
         self.height = 0 # Canopy height, in centimeters (cm)
         self.root_radius = 0 # Root system radius, in centimeters (cm)
+        self.core_radius = 0 # Structural core radius, in centimeters (cm)
         
         self.reproductive_energy_stored = 0.0 # Energy invested in reproductive structures, in Joules (J)
         self.competition_factor = 1.0 # DEPRECATED, will be removed later.
@@ -70,11 +71,8 @@ class Plant(Creature):
         self.humidity = world.environment.get_humidity(self.x, self.y)
         self.environment_eff = self.calculate_environment_efficiency(self.temperature, self.humidity)
 
-    def get_core_radius(self):
-        return self.radius * self.genes.core_radius_factor
-
     def get_personal_space_radius(self):
-        return self.get_core_radius() * C.PLANT_CORE_PERSONAL_SPACE_FACTOR
+        return self.core_radius * C.PLANT_CORE_PERSONAL_SPACE_FACTOR
 
     def get_soil_type(self, elevation):
         if C.TERRAIN_WATER_LEVEL <= elevation < C.TERRAIN_SAND_LEVEL: return "sand"
@@ -153,6 +151,7 @@ class Plant(Creature):
                 self.life_stage = "seedling"
                 self.radius = C.PLANT_SPROUT_RADIUS_CM
                 self.root_radius = C.PLANT_SPROUT_RADIUS_CM
+                self.core_radius = C.PLANT_SPROUT_CORE_RADIUS_CM
                 self.height = self.radius * C.PLANT_RADIUS_TO_HEIGHT_FACTOR
             elif is_debug_focused:
                 log.log(f"DEBUG ({self.id}): Conditions met to sprout, but not enough energy ({self.energy:.2f} < {C.PLANT_SPROUTING_ENERGY_COST}).")
@@ -189,7 +188,8 @@ class Plant(Creature):
         
         temp_difference = self.temperature - C.PLANT_RESPIRATION_REFERENCE_TEMP
         respiration_factor = C.PLANT_Q10_FACTOR ** (temp_difference / C.PLANT_Q10_INTERVAL_DIVISOR)
-        metabolism_cost = (canopy_area + root_area) * C.PLANT_BASE_MAINTENANCE_RESPIRATION_PER_AREA * respiration_factor * time_step
+        core_area = math.pi * self.core_radius**2 # Calculate the area of the structural core
+        metabolism_cost = (canopy_area + root_area + core_area) * C.PLANT_BASE_MAINTENANCE_RESPIRATION_PER_AREA * respiration_factor * time_step
         
         net_energy_production = photosynthesis_gain - metabolism_cost
         self.energy += net_energy_production
@@ -239,44 +239,63 @@ class Plant(Creature):
                 if is_debug_focused: log.log(f"    Reproduction SUCCESS. ReproEnergy: {self.reproductive_energy_stored:.2f} J.")
         
         if growth_energy > 0:
+            # --- NEW: DYNAMIC CORE GROWTH ALLOCATION ---
+            # The plant first determines if it needs to invest in its core for stability.
+            core_investment = 0
+            canopy_root_investment = growth_energy
+            
+            # Avoid division by zero for brand new plants
+            if canopy_area > 1.0:
+                current_ratio = (math.pi * self.core_radius**2) / canopy_area
+                deficit = C.PLANT_IDEAL_CORE_TO_CANOPY_AREA_RATIO - current_ratio
+                
+                # If the plant is "top heavy", it must invest in its core.
+                if deficit > 0:
+                    # The priority is a value from 0-1 indicating how urgently we need to grow the core.
+                    structural_priority = min(1.0, deficit / C.PLANT_IDEAL_CORE_TO_CANOPY_AREA_RATIO)
+                    core_investment = growth_energy * structural_priority
+                    canopy_root_investment = growth_energy - core_investment
+                    if is_debug_focused:
+                        log.log(f"    Allocation (Structural): Priority={structural_priority:.2f}. Investing {core_investment:.4f} J in Core, {canopy_root_investment:.4f} J in Canopy/Roots.")
+
             total_limitation = self.environment_eff + soil_eff
             if total_limitation > 0:
-                # --- OPTIMIZATION: Store old core radius before growth ---
-                old_core_radius = self.get_core_radius()
+                old_core_radius = self.core_radius
 
-                added_biomass_area = growth_energy / C.PLANT_BIOMASS_ENERGY_COST
-                canopy_alloc_factor = soil_eff / total_limitation
-                root_alloc_factor = self.environment_eff / total_limitation
-                added_canopy_area = added_biomass_area * canopy_alloc_factor
-                added_root_area = added_biomass_area * root_alloc_factor
-                
-                new_canopy_area = canopy_area + added_canopy_area
-                self.radius = math.sqrt(new_canopy_area / math.pi)
-                new_root_area = root_area + added_root_area
-                self.root_radius = math.sqrt(new_root_area / math.pi)
-                self.height = self.radius * C.PLANT_RADIUS_TO_HEIGHT_FACTOR
-                
-                new_core_radius = self.get_core_radius()
+                # 1. Grow the Core
+                if core_investment > 0:
+                    added_core_area = core_investment / C.PLANT_BIOMASS_ENERGY_COST
+                    new_core_area = (math.pi * self.core_radius**2) + added_core_area
+                    self.core_radius = math.sqrt(new_core_area / math.pi)
 
+                # 2. Grow Canopy and Roots with remaining energy
+                if canopy_root_investment > 0:
+                    added_biomass_area = canopy_root_investment / C.PLANT_BIOMASS_ENERGY_COST
+                    canopy_alloc_factor = soil_eff / total_limitation
+                    root_alloc_factor = self.environment_eff / total_limitation
+                    added_canopy_area = added_biomass_area * canopy_alloc_factor
+                    added_root_area = added_biomass_area * root_alloc_factor
+                    
+                    new_canopy_area = canopy_area + added_canopy_area
+                    self.radius = math.sqrt(new_canopy_area / math.pi)
+                    new_root_area = root_area + added_root_area
+                    self.root_radius = math.sqrt(new_root_area / math.pi)
+                    self.height = self.radius * C.PLANT_RADIUS_TO_HEIGHT_FACTOR
+                
                 if is_debug_focused:
-                    log.log(f"      - Growth: {growth_energy:.2f} J -> {added_biomass_area:.2f} cm^2 area. New Radius={self.radius:.2f}")
+                    log.log(f"      - Growth: New Radius={self.radius:.2f}, New Core Radius={self.core_radius:.2f}")
 
-                # --- OPTIMIZATION: New, efficient crush check. ---
-                # If the core has grown, check for small plants to crush within the new core area.
-                if new_core_radius > old_core_radius:
-                    search_area = Rectangle(self.x, self.y, new_core_radius, new_core_radius)
-                    # Query for neighbors within the core. This is a much smaller, more targeted query.
+                # --- OPTIMIZATION: Crush check uses the new independent core_radius ---
+                if self.core_radius > old_core_radius:
+                    search_area = Rectangle(self.x, self.y, self.core_radius, self.core_radius)
                     neighbors = world.quadtree.query(search_area, [])
                     for neighbor in neighbors:
-                        # Must be a different plant and vulnerable to crushing.
                         if neighbor is self or not isinstance(neighbor, Plant) or not neighbor.is_alive:
                             continue
                         
-                        # Check if the neighbor is small enough to be crushed
-                        if neighbor.radius < C.PLANT_CRUSH_RESISTANCE_RADIUS_CM:
+                        if neighbor.radius < self.core_radius:
                             dist_sq = (self.x - neighbor.x)**2 + (self.y - neighbor.y)**2
-                            # Final check: is the neighbor's center within our core radius?
-                            if dist_sq < new_core_radius**2:
+                            if dist_sq < self.core_radius**2:
                                 neighbor_is_debug_focused = (world.debug_focused_creature_id == neighbor.id)
                                 if is_debug_focused or neighbor_is_debug_focused:
                                     log.log(f"DEATH ({neighbor.id}): Crushed by the growing core of Plant ID {self.id}.")
@@ -379,7 +398,6 @@ class Plant(Creature):
         return temp_eff * hum_eff
 
     def draw(self, screen, camera):
-        # --- NEW: Do not draw dormant seeds ---
         if self.life_stage == "seed":
             return
 
@@ -391,7 +409,7 @@ class Plant(Creature):
             canopy_color = lerp_color(C.COLOR_PLANT_CANOPY_SICKLY, C.COLOR_PLANT_CANOPY_HEALTHY, health_ratio)
             pygame.draw.circle(canopy_surface, canopy_color, (canopy_radius, canopy_radius), canopy_radius)
             screen.blit(canopy_surface, (screen_pos[0] - canopy_radius, screen_pos[1] - canopy_radius))
-        core_radius = camera.scale(self.get_core_radius())
+        core_radius = camera.scale(self.core_radius)
         if core_radius >= 1:
             pygame.draw.circle(screen, C.COLOR_PLANT_CORE, screen_pos, core_radius)
 

@@ -238,9 +238,16 @@ PLANT_LOGIC_UPDATE_INTERVAL_SECONDS = 3600.0 # (1 Hour)
 # Unit: Centimeters (cm)
 PLANT_SPROUT_RADIUS_CM = 1.0
 
-PLANT_CORE_RADIUS_FACTOR = 0.25
-
 # --- NEW: Growth Allocation ---
+# The ideal ratio of core cross-sectional area to canopy area that the plant
+# tries to maintain for structural stability. This is a behavioral target, not a fixed rule.
+# Unit: Unitless ratio (area/area)
+PLANT_IDEAL_CORE_TO_CANOPY_AREA_RATIO = 0.015
+
+# The initial radius of a seedling's structural core right after sprouting.
+# Unit: Centimeters (cm)
+PLANT_SPROUT_CORE_RADIUS_CM = 0.2
+
 # Height is now an emergent property of the plant's radius, not a direct investment.
 # This factor determines how tall a plant is relative to its width.
 # Unit: Unitless ratio
