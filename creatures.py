@@ -41,10 +41,16 @@ class Plant(Creature):
     def __init__(self, world, x, y, initial_energy=C.CREATURE_INITIAL_ENERGY):
         super().__init__(x, y, initial_energy)
         self.genes = PlantGenes()
-        self.radius = C.PLANT_INITIAL_RADIUS_CM # Canopy radius, in centimeters (cm)
-        # Height is now an emergent property derived from the radius.
-        self.height = self.radius * C.PLANT_RADIUS_TO_HEIGHT_FACTOR # Canopy height, in centimeters (cm)
-        self.root_radius = C.PLANT_INITIAL_ROOT_RADIUS_CM # Root system radius, in centimeters (cm)
+        
+        # --- NEW: Life Cycle State ---
+        self.life_stage = "seed" # Start as a seed
+        log.log(f"DEBUG ({self.id}): New plant created as a seed with {self.energy:.2f} J energy.")
+
+        # Physical properties are 0 until sprouting.
+        self.radius = 0 # Canopy radius, in centimeters (cm)
+        self.height = 0 # Canopy height, in centimeters (cm)
+        self.root_radius = 0 # Root system radius, in centimeters (cm)
+        
         self.reproductive_energy_stored = 0.0 # Energy invested in reproductive structures, in Joules (J)
         self.competition_factor = 1.0 # DEPRECATED, will be removed later.
         self.competition_update_accumulator = 0.0 # Time since last competition check, in seconds (s)
@@ -56,7 +62,7 @@ class Plant(Creature):
         self.soil_type = self.get_soil_type(self.elevation)  # Type of soil at location (e.g., "sand", "grass")
         
         if self.soil_type is None:
-            log.log(f"DEBUG ({self.id}): Spawning on invalid terrain. Marking for death.")
+            log.log(f"DEBUG ({self.id}): Seed landed on invalid terrain. Marking for death.")
             self.is_alive = False
             self.energy = 0
             return
@@ -127,42 +133,62 @@ class Plant(Creature):
         
         return min(total_shaded_canopy_area, my_canopy_area), min(total_overlapped_root_area, my_root_area)
 
-    def update(self, world, time_step):
-        """
-        Runs the core biological logic for a fixed time_step.
-        This function is now only called by the world's scheduler.
-        """
-        if not self.is_alive: return
+    def _update_seed(self, world, time_step, is_debug_focused):
+        """Logic for when the plant is a dormant seed."""
+        # --- 1. Dormancy Metabolism ---
+        dormancy_cost = (C.PLANT_DORMANCY_METABOLISM_J_PER_HOUR / C.SECONDS_PER_HOUR) * time_step
+        self.energy -= dormancy_cost
 
-        self.age += time_step
-        is_debug_focused = (world.debug_focused_creature_id == self.id)
+        if self.energy <= 0:
+            if is_debug_focused: log.log(f"DEBUG ({self.id}): Seed ran out of energy.")
+            self.die(world, "dormancy_failure")
+            return
 
+        # --- 2. Check Germination Conditions ---
+        temp_ok = C.GERMINATION_MIN_TEMP <= self.temperature <= C.GERMINATION_MAX_TEMP
+        humidity_ok = self.humidity >= C.GERMINATION_HUMIDITY_THRESHOLD
+        
+        if temp_ok and humidity_ok:
+            if self.energy >= C.PLANT_SPROUTING_ENERGY_COST:
+                self.energy -= C.PLANT_SPROUTING_ENERGY_COST
+                self.life_stage = "seedling"
+                self.radius = C.PLANT_INITIAL_RADIUS_CM
+                self.root_radius = C.PLANT_INITIAL_ROOT_RADIUS_CM
+                self.height = self.radius * C.PLANT_RADIUS_TO_HEIGHT_FACTOR
+                log.log(f"SUCCESS ({self.id}): Seed sprouted into a seedling! Energy left: {self.energy:.2f} J.")
+            elif is_debug_focused:
+                log.log(f"DEBUG ({self.id}): Conditions met to sprout, but not enough energy ({self.energy:.2f} < {C.PLANT_SPROUTING_ENERGY_COST}).")
+        elif is_debug_focused:
+            log.log(f"DEBUG ({self.id}): Seed remains dormant. Temp OK: {temp_ok} (is {self.temperature:.2f}), Humidity OK: {humidity_ok} (is {self.humidity:.2f}).")
+
+    def _update_growing_plant(self, world, time_step, is_debug_focused):
+        """Unified logic for seedlings and mature plants."""
         if is_debug_focused:
-            log.log(f"\n--- PLANT {self.id} LOGIC (Age: {self.age/C.SECONDS_PER_DAY:.1f} days) ---")
-            log.log(f"  Processing a single consolidated tick of {time_step:.2f}s.")
-            log.log(f"    State: Energy={self.energy:.2f}, ReproEnergy={self.reproductive_energy_stored:.2f}, Radius={self.radius:.2f}, Height={self.height:.2f}, ShadedArea={self.shaded_canopy_area:.2f}")
+            log.log(f" State ({self.life_stage}): Energy={self.energy:.2f}, ReproEnergy={self.reproductive_energy_stored:.2f}, Radius={self.radius:.2f}, Height={self.height:.2f}")
 
         # --- CORE BIOLOGY LOGIC (Calculations now use time_step directly) ---
         self.competition_update_accumulator += time_step
-        
         if self.competition_update_accumulator >= C.PLANT_COMPETITION_UPDATE_INTERVAL_SECONDS:
-            if is_debug_focused: log.log(f"DEBUG ({self.id}): Recalculating physical competition. Accumulator was {self.competition_update_accumulator:.1f}s.")
+            if is_debug_focused: log.log(f"DEBUG ({self.id}): Recalculating physical competition.")
             self.shaded_canopy_area, self.overlapped_root_area = self.calculate_physical_overlap(world.quadtree)
             self.competition_update_accumulator %= C.PLANT_COMPETITION_UPDATE_INTERVAL_SECONDS
 
-        max_soil_eff = self.genes.soil_efficiency.get(self.soil_type, 0)
-        root_to_canopy_ratio = self.root_radius / (self.radius + 1)
-        soil_eff = max_soil_eff * min(1.0, root_to_canopy_ratio * C.PLANT_ROOT_EFFICIENCY_FACTOR)
-        aging_efficiency = math.exp(-(self.age / C.PLANT_SENESCENCE_TIMESCALE_SECONDS))
-        
         canopy_area = math.pi * self.radius**2
         root_area = math.pi * self.root_radius**2
 
-        # --- NEW: Photosynthesis is based on EFFECTIVE (un-shaded) canopy area ---
-        effective_canopy_area = max(0, canopy_area - self.shaded_canopy_area)
-        photosynthesis_gain = effective_canopy_area * C.PLANT_PHOTOSYNTHESIS_PER_AREA * self.environment_eff * soil_eff * aging_efficiency * time_step
+        # --- NEW: Calculate root competition efficiency ---
+        effective_root_area = max(0, root_area - self.overlapped_root_area)
+        root_competition_eff = effective_root_area / root_area if root_area > 0 else 0
+
+        max_soil_eff = self.genes.soil_efficiency.get(self.soil_type, 0)
+        root_to_canopy_ratio = self.root_radius / (self.radius + 1)
+        # --- CHANGE: Soil efficiency is now penalized by root competition ---
+        soil_eff = max_soil_eff * min(1.0, root_to_canopy_ratio * C.PLANT_ROOT_EFFICIENCY_FACTOR) * root_competition_eff
+        aging_efficiency = math.exp(-(self.age / C.PLANT_SENESCENCE_TIMESCALE_SECONDS))
         
-        # --- Metabolism cost is based on TOTAL biomass AREA (canopy area + root area) ---
+        effective_canopy_area = max(0, canopy_area - self.shaded_canopy_area)
+        photosynthesis_gain = effective_canopy_area * C.PLANT_PHOTOSYNTHESIS_PER_AREA * self.environment_eff * soil_eff * aging_efficiency * time_step 
+        
         temp_difference = self.temperature - C.PLANT_RESPIRATION_REFERENCE_TEMP
         respiration_factor = C.PLANT_Q10_FACTOR ** (temp_difference / C.PLANT_Q10_INTERVAL_DIVISOR)
         metabolism_cost = (canopy_area + root_area) * C.PLANT_BASE_MAINTENANCE_RESPIRATION_PER_AREA * respiration_factor * time_step
@@ -172,86 +198,85 @@ class Plant(Creature):
 
         if is_debug_focused:
             log.log(f"    Efficiencies: Env={self.environment_eff:.3f}, Soil={soil_eff:.3f}, Aging={aging_efficiency:.3f}")
-            log.log(f"    Competition: ShadedCanopyArea={self.shaded_canopy_area:.2f}, OverlappedRootArea={self.overlapped_root_area:.2f}")
             log.log(f"    Energy: Gained={photosynthesis_gain:.4f}, Lost={metabolism_cost:.4f}, Net={net_energy_production:.4f}")
 
         if self.energy <= 0:
             self.die(world, "starvation")
-            if is_debug_focused: log.log(f"  Plant {self.id} died from starvation. Final Energy: {self.energy:.2f}")
+            if is_debug_focused: log.log(f"  Plant {self.id} ({self.life_stage}) died from starvation. Final Energy: {self.energy:.2f}")
             return
 
         if not self.has_reached_self_sufficiency and net_energy_production > 0:
             self.has_reached_self_sufficiency = True
-            if is_debug_focused: log.log(f"    MILESTONE: Plant {self.id} has reached self-sufficiency!")
+            self.life_stage = "mature" # Transition from seedling to mature
+            if is_debug_focused: log.log(f"    MILESTONE ({self.id}): Seedling reached self-sufficiency and is now mature!")
 
-        # --- NEW: Unified Growth & Reproduction Investment Model ---
         investment_from_reserves = 0
-        # A plant will always try to invest in growth as long as it's above its emergency reserves.
         if self.energy > C.PLANT_GROWTH_INVESTMENT_ENERGY_RESERVE:
             desired_investment = (C.PLANT_GROWTH_INVESTMENT_J_PER_HOUR / C.SECONDS_PER_HOUR) * time_step
-            # How much can we actually take from reserves?
             available_from_reserves = self.energy - C.PLANT_GROWTH_INVESTMENT_ENERGY_RESERVE
-            # We take the smaller of what we want vs. what we have.
             investment_from_reserves = min(desired_investment, available_from_reserves)
-            self.energy -= investment_from_reserves # Spend the energy from savings.
+            self.energy -= investment_from_reserves
 
-        # The total energy available for allocation is this tick's income plus any investment from savings.
         total_allocatable_energy = net_energy_production + investment_from_reserves
         growth_energy = 0
 
         if total_allocatable_energy > 0:
-            reproductive_investment = total_allocatable_energy * C.PLANT_REPRODUCTIVE_INVESTMENT_RATIO
-            self.reproductive_energy_stored += reproductive_investment
-            growth_energy = total_allocatable_energy * (1 - C.PLANT_REPRODUCTIVE_INVESTMENT_RATIO)
-            if is_debug_focused:
-                log.log(f"    Allocation: Total pool of {total_allocatable_energy:.4f} J -> {reproductive_investment:.4f} J to repro, {growth_energy:.4f} J to growth.")
+            # Only mature plants invest in reproduction
+            if self.life_stage == "mature":
+                reproductive_investment = total_allocatable_energy * C.PLANT_REPRODUCTIVE_INVESTMENT_RATIO
+                self.reproductive_energy_stored += reproductive_investment
+                growth_energy = total_allocatable_energy * (1 - C.PLANT_REPRODUCTIVE_INVESTMENT_RATIO)
+                if is_debug_focused: log.log(f"    Allocation: Total pool {total_allocatable_energy:.4f} J -> {reproductive_investment:.4f} J to repro, {growth_energy:.4f} J to growth.")
+            else: # Seedlings put everything into growth
+                growth_energy = total_allocatable_energy
+                if is_debug_focused: log.log(f"    Allocation (Seedling): Total pool {total_allocatable_energy:.4f} J -> All to growth.")
         elif is_debug_focused:
             log.log(f"    Allocation: No surplus energy or reserves to invest.")
 
-        # --- Reproduction Logic ---
-        if self.can_reproduce() and not self.is_overcrowded(world.quadtree):
+        if self.life_stage == "mature" and self.can_reproduce() and not self.is_overcrowded(world.quadtree):
             if is_debug_focused: log.log(f"    Reproduction Check: Conditions met. Attempting to spawn.")
             new_plant = self.reproduce(world, world.quadtree)
             if new_plant:
                 world.add_newborn(new_plant)
-                if is_debug_focused: log.log(f"    Reproduction SUCCESS. Energy remaining: {self.energy:.2f} J, ReproEnergy: {self.reproductive_energy_stored:.2f} J.")
+                if is_debug_focused: log.log(f"    Reproduction SUCCESS. ReproEnergy: {self.reproductive_energy_stored:.2f} J.")
         
-        # --- Growth Logic (2D Area-Based Model) ---
         if growth_energy > 0:
             total_limitation = self.environment_eff + soil_eff
             if total_limitation > 0:
-                # --- 1. Calculate total new area to be grown ---
-                # The cost is for growing 2D area, not 3D volume.
                 added_biomass_area = growth_energy / C.PLANT_BIOMASS_ENERGY_COST
-
-                # --- 2. Allocate new area between canopy and roots ---
-                # This logic is sound: invest more in roots if light/air is good, more in canopy if soil is good.
                 canopy_alloc_factor = soil_eff / total_limitation
                 root_alloc_factor = self.environment_eff / total_limitation
-                
                 added_canopy_area = added_biomass_area * canopy_alloc_factor
                 added_root_area = added_biomass_area * root_alloc_factor
-
-                # --- 3. Update radii from new areas ---
+                
                 new_canopy_area = canopy_area + added_canopy_area
                 self.radius = math.sqrt(new_canopy_area / math.pi)
-                
                 new_root_area = root_area + added_root_area
                 self.root_radius = math.sqrt(new_root_area / math.pi)
-
-                # --- 4. Update height as an emergent property of the new radius ---
                 self.height = self.radius * C.PLANT_RADIUS_TO_HEIGHT_FACTOR
 
                 if is_debug_focused:
-                    log.log(f"      - Growth Investment: {growth_energy:.2f} J -> {added_biomass_area:.2f} cm^2 total new area.")
-                    log.log(f"      - Area Allocation: {added_canopy_area:.2f} cm^2 to Canopy, {added_root_area:.2f} cm^2 to Roots.")
-                    log.log(f"      - New State: Radius={self.radius:.2f}, Height={self.height:.2f}, RootRadius={self.root_radius:.2f}")
-
+                    log.log(f"      - Growth: {growth_energy:.2f} J -> {added_biomass_area:.2f} cm^2 area. New Radius={self.radius:.2f}")
             elif is_debug_focused:
                 log.log(f"      - Decision: CANNOT GROW (Total limitation factor is zero).")
+
+    def update(self, world, time_step):
+        if not self.is_alive: return
+
+        self.age += time_step
+        is_debug_focused = (world.debug_focused_creature_id == self.id)
+
+        if is_debug_focused:
+            log.log(f"\n--- PLANT {self.id} LOGIC (Age: {self.age/C.SECONDS_PER_DAY:.1f} days, Stage: {self.life_stage}) ---")
+            log.log(f"  Processing tick of {time_step:.2f}s.")
+
+        if self.life_stage == "seed":
+            self._update_seed(world, time_step, is_debug_focused)
+        else:  # "seedling" or "mature"
+            self._update_growing_plant(world, time_step, is_debug_focused)
         
         if is_debug_focused:
-            log.log(f"--- END LOGIC {self.id} --- Final Energy: {self.energy:.2f}, Radius: {self.radius:.2f}, Height={self.height:.2f}")
+            log.log(f"--- END LOGIC {self.id} --- Final Energy: {self.energy:.2f}")
 
     def is_overcrowded(self, quadtree):
         search_area = Rectangle(self.x, self.y, C.PLANT_CROWDED_RADIUS_CM, C.PLANT_CROWDED_RADIUS_CM)
@@ -264,10 +289,12 @@ class Plant(Creature):
         A plant can reproduce if it is mature (has enough stored reproductive energy) AND
         has enough current energy to pay for both the fruit structure and the seed provisioning.
         """
-        is_mature = self.reproductive_energy_stored >= C.PLANT_REPRODUCTION_MINIMUM_STORED_ENERGY
+        # --- NEW: Must be in the 'mature' life stage to reproduce ---
+        is_biologically_mature = self.life_stage == "mature"
+        has_stored_energy = self.reproductive_energy_stored >= C.PLANT_REPRODUCTION_MINIMUM_STORED_ENERGY
         total_current_cost = C.PLANT_FRUIT_STRUCTURAL_ENERGY_COST + C.PLANT_SEED_PROVISIONING_ENERGY
         has_enough_energy = self.energy >= total_current_cost
-        return is_mature and has_enough_energy
+        return is_biologically_mature and has_stored_energy and has_enough_energy
 
     def reproduce(self, world, quadtree):
         """
@@ -327,6 +354,10 @@ class Plant(Creature):
         return temp_eff * hum_eff
 
     def draw(self, screen, camera):
+        # --- NEW: Do not draw dormant seeds ---
+        if self.life_stage == "seed":
+            return
+
         screen_pos = camera.world_to_screen(self.x, self.y)
         canopy_radius = camera.scale(self.radius)
         if canopy_radius >= 1:

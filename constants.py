@@ -178,7 +178,29 @@ CREATURE_ID_MAX = 9999
 # =============================================================================
 # --- PLANTS ---
 # =============================================================================
-# --- NEW: Reproduction & Maturity ---
+# --- NEW: Life Cycle & Germination ---
+# The passive energy drain on a dormant seed per hour.
+# Unit: Joules per Hour (J/h)
+PLANT_DORMANCY_METABOLISM_J_PER_HOUR = 10.0
+
+# The one-time energy cost for a seed to sprout into a seedling.
+# Unit: Joules (J)
+PLANT_SPROUTING_ENERGY_COST = 2000.0
+
+# The minimum normalized humidity [0,1] required for a seed to germinate.
+# Unit: Unitless [0, 1]
+GERMINATION_HUMIDITY_THRESHOLD = 0.5
+
+# The minimum normalized temperature [0,1] required for a seed to germinate.
+# Unit: Unitless [0, 1]
+GERMINATION_MIN_TEMP = 0.4
+
+# The maximum normalized temperature [0,1] required for a seed to germinate.
+# Unit: Unitless [0, 1]
+GERMINATION_MAX_TEMP = 0.85
+
+
+# --- Reproduction & Maturity ---
 # The proportion of surplus energy a plant invests in its reproductive structures.
 # Unit: Unitless ratio [0, 1]
 PLANT_REPRODUCTIVE_INVESTMENT_RATIO = 0.25
