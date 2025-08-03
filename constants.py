@@ -257,6 +257,10 @@ PLANT_INITIAL_ROOT_RADIUS_CM = 10.0
 PLANT_CORE_PERSONAL_SPACE_FACTOR = 1.5
 PLANT_ROOT_EFFICIENCY_FACTOR = 2.0
 
+# The radius a plant must reach to no longer be vulnerable to being crushed by a neighbor's core.
+# Unit: Centimeters (cm)
+PLANT_CRUSH_RESISTANCE_RADIUS_CM = 25.0
+
 # --- Genetic Traits & Environmental Interaction ---
 PLANT_OPTIMAL_TEMPERATURE = 0.65
 PLANT_TEMPERATURE_TOLERANCE = 0.2

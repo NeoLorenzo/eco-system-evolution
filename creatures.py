@@ -373,12 +373,13 @@ class Plant(Creature):
             pygame.draw.circle(screen, C.COLOR_PLANT_CORE, screen_pos, core_radius)
 
     def _check_for_core_crush(self, world):
-        """Checks if a seed or seedling is inside the core of another plant. If so, it dies."""
-        # This check only applies to the most vulnerable life stages.
-        if self.life_stage not in ["seed", "seedling"]:
+        """Checks if a physically small plant is inside the core of another plant. If so, it dies."""
+        # --- BUG FIX: Vulnerability is based on physical size, not life stage. ---
+        # A plant that is still small is vulnerable, even if it's "mature".
+        if self.radius >= C.PLANT_CRUSH_RESISTANCE_RADIUS_CM:
             return False
 
-        # --- BUG FIX: Use a massive search radius to find all potential threats ---
+        # Use a massive search radius to find all potential threats.
         # The previous, smaller radius failed to detect very large plants whose
         # centers were far away but whose cores still overlapped the seedling.
         search_radius = C.PLANT_MAX_INTERACTION_RADIUS_CM
