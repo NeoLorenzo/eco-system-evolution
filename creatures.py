@@ -241,6 +241,9 @@ class Plant(Creature):
         if growth_energy > 0:
             total_limitation = self.environment_eff + soil_eff
             if total_limitation > 0:
+                # --- OPTIMIZATION: Store old core radius before growth ---
+                old_core_radius = self.get_core_radius()
+
                 added_biomass_area = growth_energy / C.PLANT_BIOMASS_ENERGY_COST
                 canopy_alloc_factor = soil_eff / total_limitation
                 root_alloc_factor = self.environment_eff / total_limitation
@@ -252,18 +255,38 @@ class Plant(Creature):
                 new_root_area = root_area + added_root_area
                 self.root_radius = math.sqrt(new_root_area / math.pi)
                 self.height = self.radius * C.PLANT_RADIUS_TO_HEIGHT_FACTOR
+                
+                new_core_radius = self.get_core_radius()
 
                 if is_debug_focused:
                     log.log(f"      - Growth: {growth_energy:.2f} J -> {added_biomass_area:.2f} cm^2 area. New Radius={self.radius:.2f}")
+
+                # --- OPTIMIZATION: New, efficient crush check. ---
+                # If the core has grown, check for small plants to crush within the new core area.
+                if new_core_radius > old_core_radius:
+                    search_area = Rectangle(self.x, self.y, new_core_radius, new_core_radius)
+                    # Query for neighbors within the core. This is a much smaller, more targeted query.
+                    neighbors = world.quadtree.query(search_area, [])
+                    for neighbor in neighbors:
+                        # Must be a different plant and vulnerable to crushing.
+                        if neighbor is self or not isinstance(neighbor, Plant) or not neighbor.is_alive:
+                            continue
+                        
+                        # Check if the neighbor is small enough to be crushed
+                        if neighbor.radius < C.PLANT_CRUSH_RESISTANCE_RADIUS_CM:
+                            dist_sq = (self.x - neighbor.x)**2 + (self.y - neighbor.y)**2
+                            # Final check: is the neighbor's center within our core radius?
+                            if dist_sq < new_core_radius**2:
+                                neighbor_is_debug_focused = (world.debug_focused_creature_id == neighbor.id)
+                                if is_debug_focused or neighbor_is_debug_focused:
+                                    log.log(f"DEATH ({neighbor.id}): Crushed by the growing core of Plant ID {self.id}.")
+                                neighbor.die(world, "core_crush")
+
             elif is_debug_focused:
                 log.log(f"      - Decision: CANNOT GROW (Total limitation factor is zero).")
 
     def update(self, world, time_step):
         if not self.is_alive: return
-
-        # --- NEW: Immediate physical checks before any other logic ---
-        if self._check_for_core_crush(world):
-            return # The plant was crushed, its turn is over.
 
         self.age += time_step
         is_debug_focused = (world.debug_focused_creature_id == self.id)
@@ -371,37 +394,6 @@ class Plant(Creature):
         core_radius = camera.scale(self.get_core_radius())
         if core_radius >= 1:
             pygame.draw.circle(screen, C.COLOR_PLANT_CORE, screen_pos, core_radius)
-
-    def _check_for_core_crush(self, world):
-        """Checks if a physically small plant is inside the core of another plant. If so, it dies."""
-        # --- BUG FIX: Vulnerability is based on physical size, not life stage. ---
-        # A plant that is still small is vulnerable, even if it's "mature".
-        if self.radius >= C.PLANT_CRUSH_RESISTANCE_RADIUS_CM:
-            return False
-
-        # Use a massive search radius to find all potential threats.
-        # The previous, smaller radius failed to detect very large plants whose
-        # centers were far away but whose cores still overlapped the seedling.
-        search_radius = C.PLANT_MAX_INTERACTION_RADIUS_CM
-        search_area = Rectangle(self.x, self.y, search_radius, search_radius)
-        neighbors = world.quadtree.query(search_area, [])
-
-        for neighbor in neighbors:
-            # Can't be crushed by yourself, and must be a Plant.
-            if neighbor is self or not isinstance(neighbor, Plant):
-                continue
-
-            dist_sq = (self.x - neighbor.x)**2 + (self.y - neighbor.y)**2
-            neighbor_core_radius = neighbor.get_core_radius()
-
-            if dist_sq < neighbor_core_radius**2:
-                is_debug_focused = (world.debug_focused_creature_id == self.id or world.debug_focused_creature_id == neighbor.id)
-                if is_debug_focused:
-                    log.log(f"DEATH ({self.id}): Crushed by the core of Plant ID {neighbor.id}.")
-                self.die(world, "core_crush")
-                return True # Crushed, no need to check other neighbors.
-        
-        return False # Survived.
 
 class Animal(Creature):
     def __init__(self, x, y):
