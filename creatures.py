@@ -20,11 +20,9 @@ class Creature:
         self.age = 0  # Age of the creature, in seconds (s)
         self.is_alive = True
         self.id = random.randint(C.CREATURE_ID_MIN, C.CREATURE_ID_MAX)
-        log.log(f"DEBUG: Creature {self.id} created at ({x:.0f}, {y:.0f}). Initial Energy: {self.energy}")
 
     def die(self, world, cause):
         if self.is_alive:
-            log.log(f"DEBUG: Creature {self.id} is dying from: {cause}")
             self.is_alive = False
             world.report_death(self)
 
@@ -42,7 +40,6 @@ class Creature:
 class Plant(Creature):
     def __init__(self, world, x, y, initial_energy=C.CREATURE_INITIAL_ENERGY):
         super().__init__(x, y, initial_energy)
-        log.log(f"DEBUG ({self.id}): Initializing as a Plant.")
         self.genes = PlantGenes()
         self.radius = C.PLANT_INITIAL_RADIUS_CM # Canopy radius, in centimeters (cm)
         # Height is now an emergent property derived from the radius.
@@ -57,7 +54,6 @@ class Plant(Creature):
 
         self.elevation = world.environment.get_elevation(self.x, self.y)  # Cached elevation, unitless [0, 1]
         self.soil_type = self.get_soil_type(self.elevation)  # Type of soil at location (e.g., "sand", "grass")
-        log.log(f"DEBUG ({self.id}): Environment check: Elevation={self.elevation:.2f}, Soil='{self.soil_type}'")
         
         if self.soil_type is None:
             log.log(f"DEBUG ({self.id}): Spawning on invalid terrain. Marking for death.")
@@ -68,7 +64,6 @@ class Plant(Creature):
         self.temperature = world.environment.get_temperature(self.x, self.y)
         self.humidity = world.environment.get_humidity(self.x, self.y)
         self.environment_eff = self.calculate_environment_efficiency(self.temperature, self.humidity)
-        log.log(f"DEBUG ({self.id}): Caching env_eff: {self.environment_eff:.3f}")
 
     def get_core_radius(self):
         return self.radius * self.genes.core_radius_factor
@@ -151,7 +146,7 @@ class Plant(Creature):
         self.competition_update_accumulator += time_step
         
         if self.competition_update_accumulator >= C.PLANT_COMPETITION_UPDATE_INTERVAL_SECONDS:
-            log.log(f"DEBUG ({self.id}): Recalculating physical competition. Accumulator was {self.competition_update_accumulator:.1f}s.")
+            if is_debug_focused: log.log(f"DEBUG ({self.id}): Recalculating physical competition. Accumulator was {self.competition_update_accumulator:.1f}s.")
             self.shaded_canopy_area, self.overlapped_root_area = self.calculate_physical_overlap(world.quadtree)
             self.competition_update_accumulator %= C.PLANT_COMPETITION_UPDATE_INTERVAL_SECONDS
 
@@ -278,46 +273,40 @@ class Plant(Creature):
         """
         Overrides the base Creature method. Finds a valid spawn location and creates a new Plant
         with a specific provision of energy transferred from the parent.
+        This method is heavily optimized to reduce quadtree queries.
         """
-        
-        # --- 1. Find a suitable location for the offspring (OPTIMIZED) ---
-        # Instead of one large query, we do several small, fast queries at candidate locations.
-        best_location = None
-        least_neighbors_at_best_loc = float('inf')
+        is_debug_focused = (world.debug_focused_creature_id == self.id)
 
+        # --- 1. Find a suitable location for the offspring (HIGHLY OPTIMIZED) ---
+        # Step A: Perform ONE query to get all potential neighbors in the entire seed spread area.
+        search_area = Rectangle(self.x, self.y, C.PLANT_SEED_SPREAD_RADIUS_CM, C.PLANT_SEED_SPREAD_RADIUS_CM)
+        neighbors = [p for p in quadtree.query(search_area, []) if isinstance(p, Plant) and p is not self]
+
+        best_location = None
+        
+        # Step B: Try to find a spot with zero neighbors first. This is the ideal case.
         for _ in range(C.PLANT_REPRODUCTION_ATTEMPTS):
-            # Step A: Pick a random candidate location.
             spawn_angle = random.uniform(0, 2 * math.pi)
             spawn_dist = random.uniform(0, C.PLANT_SEED_SPREAD_RADIUS_CM)
             candidate_x = self.x + spawn_dist * math.cos(spawn_angle)
             candidate_y = self.y + spawn_dist * math.sin(spawn_angle)
 
-            # Step B: Perform a small, localized query to check for immediate collisions.
-            # This is much faster than iterating through all neighbors in the larger spread radius.
-            personal_space_radius = (1.0 * self.genes.core_radius_factor) * C.PLANT_CORE_PERSONAL_SPACE_FACTOR
-            check_area = Rectangle(candidate_x, candidate_y, personal_space_radius, personal_space_radius)
-            immediate_neighbors = quadtree.query(check_area, [])
-
-            # If there's any plant in the immediate personal space, this spot is invalid.
-            if any(isinstance(p, Plant) for p in immediate_neighbors):
-                continue
-
-            # Step C: If the spot is valid, check for general crowding.
-            crowd_check_area = Rectangle(candidate_x, candidate_y, C.PLANT_CROWDED_RADIUS_CM, C.PLANT_CROWDED_RADIUS_CM)
-            crowd_neighbors = quadtree.query(crowd_check_area, [])
-            num_crowd_neighbors = len([p for p in crowd_neighbors if isinstance(p, Plant)])
-
-            # Step D: If this is the best spot found so far, save it.
-            if num_crowd_neighbors < least_neighbors_at_best_loc:
-                least_neighbors_at_best_loc = num_crowd_neighbors
+            is_valid = True
+            for neighbor in neighbors:
+                # Check if the candidate point is inside the neighbor's personal space.
+                # This is the crucial bug fix.
+                dist_sq = (candidate_x - neighbor.x)**2 + (candidate_y - neighbor.y)**2
+                if dist_sq < neighbor.get_personal_space_radius()**2:
+                    is_valid = False
+                    break # Collision detected, this candidate is invalid.
+            
+            if is_valid:
                 best_location = (candidate_x, candidate_y)
-                # If we find a spot with 0 neighbors, it's perfect. No need to search further.
-                if least_neighbors_at_best_loc == 0:
-                    break
-        
+                break # Found a perfect spot, no need to search further.
+
         # --- 2. If a location is found, pay the costs and create the new plant ---
         if best_location:
-            log.log(f"DEBUG ({self.id}): Found a valid spawn location. Paying costs.")
+            if is_debug_focused: log.log(f"DEBUG ({self.id}): Found a valid spawn location. Paying costs.")
             
             # Pay the dual energy costs
             self.energy -= (C.PLANT_FRUIT_STRUCTURAL_ENERGY_COST + C.PLANT_SEED_PROVISIONING_ENERGY)
@@ -327,7 +316,7 @@ class Plant(Creature):
             return Plant(world, best_location[0], best_location[1], initial_energy=C.PLANT_SEED_PROVISIONING_ENERGY)
         
         # --- 3. If no location is found, no costs are paid ---
-        log.log(f"DEBUG ({self.id}): Failed to find a valid spawn location. No energy was lost.")
+        if is_debug_focused: log.log(f"DEBUG ({self.id}): Failed to find a valid spawn location. No energy was lost.")
         return None
 
     def calculate_environment_efficiency(self, temperature, humidity):
