@@ -167,7 +167,7 @@ class World:
             self.max_plant_radius = 0.0
         else:
             # Use np.max on the radii array for a fast, vectorized operation.
-            self.max_plant_radius = np.max(pm.radii[:pm.count])
+            self.max_plant_radius = np.max(pm.arrays['radii'][:pm.count])
 
     def _populate_competition_grids(self):
         """Pass 1: Populate the light and root grids with data from all plants."""
@@ -177,12 +177,12 @@ class World:
 
         # Iterate by index over the NumPy arrays, the new source of truth.
         for i in range(pm.count):
-            radius = pm.radii[i]
+            radius = pm.arrays['radii'][i]
             if radius <= 0: continue
 
-            x, y = pm.positions[i]
-            height = pm.heights[i]
-            root_radius = pm.root_radii[i]
+            x, y = pm.arrays['positions'][i]
+            height = pm.arrays['heights'][i]
+            root_radius = pm.arrays['root_radii'][i]
 
             # --- Rasterize Canopy for Light Grid ---
             min_gx = int(max(0, (x - radius) / C.LIGHT_GRID_CELL_SIZE_CM))
@@ -223,12 +223,12 @@ class World:
             plant.shaded_canopy_area = 0.0
             plant.overlapped_root_area = 0.0
             
-            radius = pm.radii[i]
+            radius = pm.arrays['radii'][i]
             if radius <= 0: continue
 
-            x, y = pm.positions[i]
-            height = pm.heights[i]
-            root_radius = pm.root_radii[i]
+            x, y = pm.arrays['positions'][i]
+            height = pm.arrays['heights'][i]
+            root_radius = pm.arrays['root_radii'][i]
 
             # --- Calculate Shaded Area ---
             min_gx = int(max(0, (x - radius) / C.LIGHT_GRID_CELL_SIZE_CM))
@@ -381,8 +381,8 @@ class World:
 
         # Iterate by index over the NumPy arrays to perform the collision check.
         for i in range(pm.count):
-            x, y = pm.positions[i]
-            radius = pm.radii[i]
+            x, y = pm.arrays['positions'][i]
+            radius = pm.arrays['radii'][i]
             dist_sq = (world_x - x)**2 + (world_y - y)**2
             if dist_sq <= radius**2:
                 # Once a match is found, get the corresponding object for its ID.

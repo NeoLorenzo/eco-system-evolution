@@ -117,7 +117,7 @@ class Plant(Creature):
         # --- 1. Dormancy Metabolism ---
         dormancy_cost = (C.PLANT_DORMANCY_METABOLISM_J_PER_HOUR / C.SECONDS_PER_HOUR) * time_step
         self.energy -= dormancy_cost
-        pm.energies[self.index] = self.energy
+        pm.arrays['energies'][self.index] = self.energy
 
         if self.energy <= 0:
             if is_debug_focused: log.log(f"DEBUG ({self.id}): Seed ran out of energy.")
@@ -131,7 +131,7 @@ class Plant(Creature):
         if temp_ok and humidity_ok:
             if self.energy >= C.PLANT_SPROUTING_ENERGY_COST:
                 self.energy -= C.PLANT_SPROUTING_ENERGY_COST
-                pm.energies[self.index] = self.energy
+                pm.arrays['energies'][self.index] = self.energy
                 self.life_stage = "seedling"
                 self.radius = C.PLANT_SPROUT_RADIUS_CM
                 self.root_radius = C.PLANT_SPROUT_RADIUS_CM
@@ -139,11 +139,10 @@ class Plant(Creature):
                 self.height = self.radius * self.radius_to_height_factor # Use instance variable
                 
                 # Update all manager arrays with new seedling values
-                pm = world.plant_manager
-                pm.heights[self.index] = self.height
-                pm.radii[self.index] = self.radius
-                pm.root_radii[self.index] = self.root_radius
-                pm.core_radii[self.index] = self.core_radius
+                pm.arrays['heights'][self.index] = self.height
+                pm.arrays['radii'][self.index] = self.radius
+                pm.arrays['root_radii'][self.index] = self.root_radius
+                pm.arrays['core_radii'][self.index] = self.core_radius
             elif is_debug_focused:
                 log.log(f"DEBUG ({self.id}): Conditions met to sprout, but not enough energy ({self.energy:.2f} < {C.PLANT_SPROUTING_ENERGY_COST}).")
         elif is_debug_focused:
@@ -189,10 +188,10 @@ class Plant(Creature):
         soil_eff = max_soil_eff * min(1.0, root_to_canopy_ratio * C.PLANT_ROOT_EFFICIENCY_FACTOR) * root_competition_eff
         
         # --- NEW: Fetch the pre-calculated aging efficiency from the manager ---
-        aging_efficiency = world.plant_manager.aging_efficiencies[self.index]
+        aging_efficiency = world.plant_manager.arrays['aging_efficiencies'][self.index]
 
         # --- NEW: Fetch the pre-calculated hydraulic efficiency from the manager ---
-        hydraulic_efficiency = world.plant_manager.hydraulic_efficiencies[self.index]
+        hydraulic_efficiency = world.plant_manager.arrays['hydraulic_efficiencies'][self.index]
         
         effective_canopy_area = max(0, canopy_area - self.shaded_canopy_area)
         
@@ -251,10 +250,10 @@ class Plant(Creature):
 
                     # Update all manager arrays with new pruned values
                     pm = world.plant_manager
-                    pm.heights[self.index] = self.height
-                    pm.radii[self.index] = self.radius
-                    pm.root_radii[self.index] = self.root_radius
-                    pm.core_radii[self.index] = self.core_radius
+                    pm.arrays['heights'][self.index] = self.height
+                    pm.arrays['radii'][self.index] = self.radius
+                    pm.arrays['root_radii'][self.index] = self.root_radius
+                    pm.arrays['core_radii'][self.index] = self.core_radius
 
                     if is_debug_focused:
                         log.log(f"      - New Radii: Canopy={self.radius:.2f}, Core={self.core_radius:.2f}.")
@@ -264,7 +263,7 @@ class Plant(Creature):
             net_energy_production = 0
 
         self.energy += net_energy_production
-        world.plant_manager.energies[self.index] = self.energy
+        world.plant_manager.arrays['energies'][self.index] = self.energy
 
         if is_debug_focused:
             log.log(f"    Efficiencies: Env={self.environment_eff:.3f}, Soil={soil_eff:.3f}, Aging={aging_efficiency:.3f}, Hydraulic={hydraulic_efficiency:.3f}")
@@ -290,9 +289,9 @@ class Plant(Creature):
             if actual_repro_investment > 0:
                 pm = world.plant_manager
                 self.energy -= actual_repro_investment
-                pm.energies[self.index] = self.energy
+                pm.arrays['energies'][self.index] = self.energy
                 self.reproductive_energy_stored += actual_repro_investment
-                pm.reproductive_energies_stored[self.index] = self.reproductive_energy_stored
+                pm.arrays['reproductive_energies_stored'][self.index] = self.reproductive_energy_stored
                 
                 # Check if we can create new flowers
                 num_new_flowers = int(self.reproductive_energy_stored // C.PLANT_FLOWER_ENERGY_COST)
@@ -303,7 +302,7 @@ class Plant(Creature):
                 if num_new_flowers > 0:
                     cost_of_flowers = num_new_flowers * C.PLANT_FLOWER_ENERGY_COST
                     self.reproductive_energy_stored -= cost_of_flowers
-                    pm.reproductive_energies_stored[self.index] = self.reproductive_energy_stored
+                    pm.arrays['reproductive_energies_stored'][self.index] = self.reproductive_energy_stored
                     for _ in range(num_new_flowers):
                         self.reproductive_organs.append(ReproductiveOrgan(self))
                     if is_debug_focused:
@@ -318,7 +317,7 @@ class Plant(Creature):
             available_from_reserves = self.energy - C.PLANT_GROWTH_INVESTMENT_ENERGY_RESERVE
             investment_from_reserves = min(desired_investment, available_from_reserves)
             self.energy -= investment_from_reserves
-            world.plant_manager.energies[self.index] = self.energy
+            world.plant_manager.arrays['energies'][self.index] = self.energy
 
         # The energy available for growth is the net production plus any amount taken from reserves.
         growth_energy = max(0, net_energy_production) + investment_from_reserves
@@ -373,7 +372,7 @@ class Plant(Creature):
                     added_core_area = core_investment / C.PLANT_CORE_BIOMASS_ENERGY_COST
                     new_core_area = (math.pi * self.core_radius**2) + added_core_area
                     self.core_radius = math.sqrt(new_core_area / math.pi)
-                    world.plant_manager.core_radii[self.index] = self.core_radius
+                    world.plant_manager.arrays['core_radii'][self.index] = self.core_radius
 
                 # 2. Grow Canopy and Roots with remaining energy
                 if canopy_root_investment > 0:
@@ -385,14 +384,14 @@ class Plant(Creature):
                     
                     new_canopy_area = canopy_area + added_canopy_area
                     self.radius = math.sqrt(new_canopy_area / math.pi)
-                    world.plant_manager.radii[self.index] = self.radius
+                    world.plant_manager.arrays['radii'][self.index] = self.radius
 
                     new_root_area = root_area + added_root_area
                     self.root_radius = math.sqrt(new_root_area / math.pi)
-                    world.plant_manager.root_radii[self.index] = self.root_radius
+                    world.plant_manager.arrays['root_radii'][self.index] = self.root_radius
 
                     self.height = self.radius * self.radius_to_height_factor # Use instance variable
-                    world.plant_manager.heights[self.index] = self.height
+                    world.plant_manager.arrays['heights'][self.index] = self.height
                 
                 if is_debug_focused:
                     log.log(f"      - Growth: New Radius={self.radius:.2f}, New Core Radius={self.core_radius:.2f}")
@@ -428,7 +427,7 @@ class Plant(Creature):
 
         self.age += time_step
         # --- NEW: Update the master 'ages' array in the manager ---
-        world.plant_manager.ages[self.index] = self.age
+        world.plant_manager.arrays['ages'][self.index] = self.age
         
         is_debug_focused = (world.debug_focused_creature_id == self.id)
 
@@ -459,7 +458,7 @@ class Plant(Creature):
                             new_seed = self._disperse_seed(world, fruit, is_debug_focused)
                             if new_seed:
                                 self.energy -= C.PLANT_SEED_PROVISIONING_ENERGY
-                                world.plant_manager.energies[self.index] = self.energy
+                                world.plant_manager.arrays['energies'][self.index] = self.energy
                                 world.add_newborn(new_seed)
                         else:
                             if is_debug_focused: log.log(f"    REPRODUCTION: Fruit dropped, but not enough energy to provision a seed. Aborting further dispersal.")
