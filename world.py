@@ -31,6 +31,7 @@ class World:
         self.quadtree = QuadTree(self.world_boundary, C.QUADTREE_CAPACITY)
         
         self.debug_focused_creature_id = None
+        self.max_plant_radius = 0.0 # The radius of the largest plant in the world, in cm.
         
         self.last_log_time_seconds = 0.0
         self.plant_deaths_this_period = 0
@@ -147,6 +148,16 @@ class World:
         self.quadtree.remove(creature)
         self.quadtree.insert(creature)
 
+    def _update_max_plant_radius(self):
+        """
+        Recalculates the largest plant radius in the world.
+        This is a simple but robust way to keep the value up-to-date.
+        """
+        if not self.plants:
+            self.max_plant_radius = 0.0
+        else:
+            self.max_plant_radius = max(p.radius for p in self.plants)
+
     def _process_housekeeping(self):
         """Handles adding newborns to the main lists and removing dead creatures."""
         # --- Housekeeping ---
@@ -166,13 +177,15 @@ class World:
             # Note: The quadtree insertion is now done in add_newborn()
         self.newborns.clear()
 
-        # --- Population Statistics Logging ---
+        # --- Population Statistics Logging & World State Update ---
         if self.time_manager.total_sim_seconds - self.last_log_time_seconds >= C.UI_LOG_INTERVAL_SECONDS:
             self._print_population_statistics()
             self.last_log_time_seconds = self.time_manager.total_sim_seconds
             self.plant_births_this_period = 0
             self.plant_deaths_this_period = 0
             self.animal_deaths_this_period = 0
+        
+        self._update_max_plant_radius()
 
     def update_in_bulk(self, large_delta_time):
         """

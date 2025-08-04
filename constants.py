@@ -254,11 +254,6 @@ PLANT_GROWTH_INVESTMENT_ENERGY_RESERVE = 10000.0
 # This is a heavy calculation, so it should not be run frequently. Once a day is a reasonable starting point.
 PLANT_COMPETITION_UPDATE_INTERVAL_SECONDS = 86400.0 # (1 Day)
 
-# The radius used in quadtree queries to find potential competitors for light and nutrients.
-# This needs to be large enough to find plants with large canopies whose centers are far away.
-# Unit: Centimeters (cm)
-PLANT_COMPETITION_SEARCH_RADIUS_CM = 5000.0
-
 # The interval (in sim seconds) at which a plant runs its main logic loop.
 # This is the fixed, discrete time-step for all biological calculations.
 PLANT_LOGIC_UPDATE_INTERVAL_SECONDS = 3600.0 # (1 Hour)

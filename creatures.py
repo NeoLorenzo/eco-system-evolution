@@ -127,15 +127,17 @@ class Plant(Creature):
         
         return term1 + term2 - term3
 
-    def calculate_physical_overlap(self, quadtree):
+    def calculate_physical_overlap(self, world):
         """Calculates the total geometric area of canopy and root overlap with neighbors."""
         total_shaded_canopy_area = 0
         total_overlapped_root_area = 0
 
         # --- OPTIMIZATION: Query for neighbors only ONCE ---
-        # The search radius for canopy and root competition is the same, so we can reuse the result.
-        search_area = Rectangle(self.x, self.y, C.PLANT_COMPETITION_SEARCH_RADIUS_CM, C.PLANT_COMPETITION_SEARCH_RADIUS_CM)
-        neighbors = quadtree.query(search_area, [])
+        # The search radius is now dynamic, based on our radius and the largest plant in the world.
+        # This is the smallest possible radius that guarantees we find all potential interactors.
+        search_radius_cm = self.radius + world.max_plant_radius
+        search_area = Rectangle(self.x, self.y, search_radius_cm, search_radius_cm)
+        neighbors = world.quadtree.query(search_area, [])
 
         for neighbor in neighbors:
             if neighbor is self or not isinstance(neighbor, Plant):
@@ -196,7 +198,7 @@ class Plant(Creature):
         self.competition_update_accumulator += time_step
         if self.competition_update_accumulator >= C.PLANT_COMPETITION_UPDATE_INTERVAL_SECONDS:
             if is_debug_focused: log.log(f"DEBUG ({self.id}): Recalculating physical competition.")
-            self.shaded_canopy_area, self.overlapped_root_area = self.calculate_physical_overlap(world.quadtree)
+            self.shaded_canopy_area, self.overlapped_root_area = self.calculate_physical_overlap(world)
             self.competition_update_accumulator %= C.PLANT_COMPETITION_UPDATE_INTERVAL_SECONDS
 
         canopy_area = math.pi * self.radius**2
