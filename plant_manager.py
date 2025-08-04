@@ -26,6 +26,7 @@ class PlantManager:
         self.core_radii = np.zeros(initial_capacity, dtype=np.float32)
         self.energies = np.zeros(initial_capacity, dtype=np.float64)
         self.reproductive_energies_stored = np.zeros(initial_capacity, dtype=np.float64)
+        self.positions = np.zeros((initial_capacity, 2), dtype=np.float32) # x, y
 
         self.aging_efficiencies = np.ones(initial_capacity, dtype=np.float32)
         self.hydraulic_efficiencies = np.ones(initial_capacity, dtype=np.float32)
@@ -50,6 +51,7 @@ class PlantManager:
         self.core_radii[self.count] = plant.core_radius
         self.energies[self.count] = plant.energy
         self.reproductive_energies_stored[self.count] = plant.reproductive_energy_stored
+        self.positions[self.count] = (plant.x, plant.y)
 
         # Increment the count of living plants.
         self.count += 1
@@ -69,6 +71,7 @@ class PlantManager:
         self.core_radii = np.resize(self.core_radii, new_capacity)
         self.energies = np.resize(self.energies, new_capacity)
         self.reproductive_energies_stored = np.resize(self.reproductive_energies_stored, new_capacity)
+        self.positions = np.resize(self.positions, (new_capacity, 2))
         self.aging_efficiencies = np.resize(self.aging_efficiencies, new_capacity)
         self.hydraulic_efficiencies = np.resize(self.hydraulic_efficiencies, new_capacity)
         
@@ -129,6 +132,7 @@ class PlantManager:
             self.core_radii[idx_to_remove] = self.core_radii[last_idx]
             self.energies[idx_to_remove] = self.energies[last_idx]
             self.reproductive_energies_stored[idx_to_remove] = self.reproductive_energies_stored[last_idx]
+            self.positions[idx_to_remove] = self.positions[last_idx] # <-- THIS LINE WAS MISSING
             self.aging_efficiencies[idx_to_remove] = self.aging_efficiencies[last_idx]
             self.hydraulic_efficiencies[idx_to_remove] = self.hydraulic_efficiencies[last_idx]
 

@@ -160,96 +160,113 @@ class World:
 
     def _update_max_plant_radius(self):
         """
-        Recalculates the largest plant radius in the world.
-        This is a simple but robust way to keep the value up-to-date.
+        Recalculates the largest plant radius in the world using NumPy for efficiency.
         """
-        if not self.plant_manager: # <--- CHANGE: Use the manager
+        pm = self.plant_manager
+        if pm.count == 0:
             self.max_plant_radius = 0.0
         else:
-            self.max_plant_radius = max(p.radius for p in self.plant_manager) # <--- CHANGE: Use the manager
+            # Use np.max on the radii array for a fast, vectorized operation.
+            self.max_plant_radius = np.max(pm.radii[:pm.count])
 
     def _populate_competition_grids(self):
         """Pass 1: Populate the light and root grids with data from all plants."""
         self.light_grid.fill(0)
         self.root_grid.fill(0)
+        pm = self.plant_manager
 
-        for plant in self.plant_manager: # <--- FIX: Use the manager
-            if plant.radius <= 0: continue
+        # Iterate by index over the NumPy arrays, the new source of truth.
+        for i in range(pm.count):
+            radius = pm.radii[i]
+            if radius <= 0: continue
+
+            x, y = pm.positions[i]
+            height = pm.heights[i]
+            root_radius = pm.root_radii[i]
 
             # --- Rasterize Canopy for Light Grid ---
-            min_gx = int(max(0, (plant.x - plant.radius) / C.LIGHT_GRID_CELL_SIZE_CM))
-            max_gx = int(min(self.light_grid.shape[0] - 1, (plant.x + plant.radius) / C.LIGHT_GRID_CELL_SIZE_CM))
-            min_gy = int(max(0, (plant.y - plant.radius) / C.LIGHT_GRID_CELL_SIZE_CM))
-            max_gy = int(min(self.light_grid.shape[1] - 1, (plant.y + plant.radius) / C.LIGHT_GRID_CELL_SIZE_CM))
+            min_gx = int(max(0, (x - radius) / C.LIGHT_GRID_CELL_SIZE_CM))
+            max_gx = int(min(self.light_grid.shape[0] - 1, (x + radius) / C.LIGHT_GRID_CELL_SIZE_CM))
+            min_gy = int(max(0, (y - radius) / C.LIGHT_GRID_CELL_SIZE_CM))
+            max_gy = int(min(self.light_grid.shape[1] - 1, (y + radius) / C.LIGHT_GRID_CELL_SIZE_CM))
 
             for gx in range(min_gx, max_gx + 1):
                 for gy in range(min_gy, max_gy + 1):
                     cell_wx = (gx + 0.5) * C.LIGHT_GRID_CELL_SIZE_CM
                     cell_wy = (gy + 0.5) * C.LIGHT_GRID_CELL_SIZE_CM
-                    dist_sq = (plant.x - cell_wx)**2 + (plant.y - cell_wy)**2
-                    if dist_sq <= plant.radius**2:
-                        self.light_grid[gx, gy] = max(self.light_grid[gx, gy], plant.height)
+                    dist_sq = (x - cell_wx)**2 + (y - cell_wy)**2
+                    if dist_sq <= radius**2:
+                        self.light_grid[gx, gy] = max(self.light_grid[gx, gy], height)
 
             # --- Rasterize Roots for Root Grid ---
-            min_gx_root = int(max(0, (plant.x - plant.root_radius) / C.LIGHT_GRID_CELL_SIZE_CM))
-            max_gx_root = int(min(self.root_grid.shape[0] - 1, (plant.x + plant.root_radius) / C.LIGHT_GRID_CELL_SIZE_CM))
-            min_gy_root = int(max(0, (plant.y - plant.root_radius) / C.LIGHT_GRID_CELL_SIZE_CM))
-            max_gy_root = int(min(self.root_grid.shape[1] - 1, (plant.y + plant.root_radius) / C.LIGHT_GRID_CELL_SIZE_CM))
+            min_gx_root = int(max(0, (x - root_radius) / C.LIGHT_GRID_CELL_SIZE_CM))
+            max_gx_root = int(min(self.root_grid.shape[0] - 1, (x + root_radius) / C.LIGHT_GRID_CELL_SIZE_CM))
+            min_gy_root = int(max(0, (y - root_radius) / C.LIGHT_GRID_CELL_SIZE_CM))
+            max_gy_root = int(min(self.root_grid.shape[1] - 1, (y + root_radius) / C.LIGHT_GRID_CELL_SIZE_CM))
 
             for gx in range(min_gx_root, max_gx_root + 1):
                 for gy in range(min_gy_root, max_gy_root + 1):
                     cell_wx = (gx + 0.5) * C.LIGHT_GRID_CELL_SIZE_CM
                     cell_wy = (gy + 0.5) * C.LIGHT_GRID_CELL_SIZE_CM
-                    dist_sq = (plant.x - cell_wx)**2 + (plant.y - cell_wy)**2
-                    if dist_sq <= plant.root_radius**2:
-                        self.root_grid[gx, gy] += plant.root_radius # Add radius as pressure proxy
+                    dist_sq = (x - cell_wx)**2 + (y - cell_wy)**2
+                    if dist_sq <= root_radius**2:
+                        self.root_grid[gx, gy] += root_radius # Add radius as pressure proxy
 
     def _calculate_plant_competition(self):
         """Pass 2: Use the populated grids to calculate competition for each plant."""
         cell_area = C.LIGHT_GRID_CELL_SIZE_CM ** 2
+        pm = self.plant_manager
 
-        for plant in self.plant_manager: # <--- FIX: Use the manager
+        # Iterate by index to read from NumPy and write to the plant objects.
+        for i in range(pm.count):
+            plant = pm.plants[i] # Get the object to update it.
             plant.shaded_canopy_area = 0.0
             plant.overlapped_root_area = 0.0
-            if plant.radius <= 0: continue
+            
+            radius = pm.radii[i]
+            if radius <= 0: continue
+
+            x, y = pm.positions[i]
+            height = pm.heights[i]
+            root_radius = pm.root_radii[i]
 
             # --- Calculate Shaded Area ---
-            min_gx = int(max(0, (plant.x - plant.radius) / C.LIGHT_GRID_CELL_SIZE_CM))
-            max_gx = int(min(self.light_grid.shape[0] - 1, (plant.x + plant.radius) / C.LIGHT_GRID_CELL_SIZE_CM))
-            min_gy = int(max(0, (plant.y - plant.radius) / C.LIGHT_GRID_CELL_SIZE_CM))
-            max_gy = int(min(self.light_grid.shape[1] - 1, (plant.y + plant.radius) / C.LIGHT_GRID_CELL_SIZE_CM))
+            min_gx = int(max(0, (x - radius) / C.LIGHT_GRID_CELL_SIZE_CM))
+            max_gx = int(min(self.light_grid.shape[0] - 1, (x + radius) / C.LIGHT_GRID_CELL_SIZE_CM))
+            min_gy = int(max(0, (y - radius) / C.LIGHT_GRID_CELL_SIZE_CM))
+            max_gy = int(min(self.light_grid.shape[1] - 1, (y + radius) / C.LIGHT_GRID_CELL_SIZE_CM))
 
             for gx in range(min_gx, max_gx + 1):
                 for gy in range(min_gy, max_gy + 1):
                     cell_wx = (gx + 0.5) * C.LIGHT_GRID_CELL_SIZE_CM
                     cell_wy = (gy + 0.5) * C.LIGHT_GRID_CELL_SIZE_CM
-                    dist_sq = (plant.x - cell_wx)**2 + (plant.y - cell_wy)**2
-                    if dist_sq <= plant.radius**2:
-                        if plant.height < self.light_grid[gx, gy]:
+                    dist_sq = (x - cell_wx)**2 + (y - cell_wy)**2
+                    if dist_sq <= radius**2:
+                        if height < self.light_grid[gx, gy]:
                             plant.shaded_canopy_area += cell_area
 
             # --- Calculate Root Overlap ---
-            min_gx_root = int(max(0, (plant.x - plant.root_radius) / C.LIGHT_GRID_CELL_SIZE_CM))
-            max_gx_root = int(min(self.root_grid.shape[0] - 1, (plant.x + plant.root_radius) / C.LIGHT_GRID_CELL_SIZE_CM))
-            min_gy_root = int(max(0, (plant.y - plant.root_radius) / C.LIGHT_GRID_CELL_SIZE_CM))
-            max_gy_root = int(min(self.root_grid.shape[1] - 1, (plant.y + plant.root_radius) / C.LIGHT_GRID_CELL_SIZE_CM))
+            min_gx_root = int(max(0, (x - root_radius) / C.LIGHT_GRID_CELL_SIZE_CM))
+            max_gx_root = int(min(self.root_grid.shape[0] - 1, (x + root_radius) / C.LIGHT_GRID_CELL_SIZE_CM))
+            min_gy_root = int(max(0, (y - root_radius) / C.LIGHT_GRID_CELL_SIZE_CM))
+            max_gy_root = int(min(self.root_grid.shape[1] - 1, (y + root_radius) / C.LIGHT_GRID_CELL_SIZE_CM))
 
-            my_root_area = plant.root_radius**2 * np.pi
+            my_root_area = root_radius**2 * np.pi
 
             for gx in range(min_gx_root, max_gx_root + 1):
                 for gy in range(min_gy_root, max_gy_root + 1):
                     cell_wx = (gx + 0.5) * C.LIGHT_GRID_CELL_SIZE_CM
                     cell_wy = (gy + 0.5) * C.LIGHT_GRID_CELL_SIZE_CM
-                    dist_sq = (plant.x - cell_wx)**2 + (plant.y - cell_wy)**2
-                    if dist_sq <= plant.root_radius**2:
+                    dist_sq = (x - cell_wx)**2 + (y - cell_wy)**2
+                    if dist_sq <= root_radius**2:
                         total_pressure = self.root_grid[gx, gy]
-                        if total_pressure > plant.root_radius:
+                        if total_pressure > root_radius:
                             # Ratio of competition is how much pressure is NOT from this plant
-                            overlap_ratio = (total_pressure - plant.root_radius) / total_pressure
+                            overlap_ratio = (total_pressure - root_radius) / total_pressure
                             plant.overlapped_root_area += cell_area * overlap_ratio
             
             # Clamp values to be safe
-            plant.shaded_canopy_area = min(plant.shaded_canopy_area, plant.radius**2 * np.pi)
+            plant.shaded_canopy_area = min(plant.shaded_canopy_area, radius**2 * np.pi)
             plant.overlapped_root_area = min(plant.overlapped_root_area, my_root_area)
 
     def _process_housekeeping(self):
@@ -360,11 +377,17 @@ class World:
     def handle_click(self, screen_pos):
         """Handles a mouse click, printing a debug report and toggling focused logging."""
         world_x, world_y = self.camera.screen_to_world(screen_pos[0], screen_pos[1])
+        pm = self.plant_manager
 
-        for plant in self.plant_manager: # <--- CHANGE: Use the manager
-            dist_sq = (world_x - plant.x)**2 + (world_y - plant.y)**2
-            if dist_sq <= plant.radius**2:
-                log.log(f"Clicked on a plant at world coordinates ({int(plant.x)}, {int(plant.y)}).")
+        # Iterate by index over the NumPy arrays to perform the collision check.
+        for i in range(pm.count):
+            x, y = pm.positions[i]
+            radius = pm.radii[i]
+            dist_sq = (world_x - x)**2 + (world_y - y)**2
+            if dist_sq <= radius**2:
+                # Once a match is found, get the corresponding object for its ID.
+                plant = pm.plants[i]
+                log.log(f"Clicked on a plant at world coordinates ({int(x)}, {int(y)}).")
                 
                 if self.debug_focused_creature_id == plant.id:
                     self.debug_focused_creature_id = None
