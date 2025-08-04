@@ -284,6 +284,11 @@ PLANT_IDEAL_CORE_TO_CANOPY_AREA_RATIO = 0.1
 # Unit: Unitless ratio (area/area)
 PLANT_MIN_CORE_TO_CANOPY_RATIO = 0.03
 
+# During normal, stable growth, this is the percentage of surplus energy
+# that is allocated to reinforcing the core structure.
+# Unit: Unitless ratio
+PLANT_STABLE_CORE_INVESTMENT_RATIO = 0.15
+
 # The initial radius of a seedling's structural core right after sprouting.
 # Unit: Centimeters (cm)
 PLANT_SPROUT_CORE_RADIUS_CM = 0.2

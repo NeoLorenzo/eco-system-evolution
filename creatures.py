@@ -357,31 +357,35 @@ class Plant(Creature):
         # Dispersal is now handled in the main update method based on fruit state.
         
         if growth_energy > 0:
-            # --- DYNAMIC CORE GROWTH ALLOCATION ---
-            # The plant determines if it is structurally unstable and must invest in its core.
+            # --- REVISED DYNAMIC CORE GROWTH ALLOCATION (Two-Mode System) ---
             core_investment = 0
-            canopy_root_investment = growth_energy
-            
-            # Avoid division by zero for brand new plants
+            canopy_root_investment = 0 # Default to 0
+
+            # Avoid division by zero and check for trivial cases
             if canopy_area > 1.0:
                 current_ratio = core_area / canopy_area
                 
-                # If the plant is "top heavy" (ratio is below the ideal), it must consider corrective growth.
+                # --- MODE 1: RECOVERY ---
+                # If the plant is top-heavy, it enters recovery mode.
                 if current_ratio < C.PLANT_IDEAL_CORE_TO_CANOPY_AREA_RATIO:
-                    # The "danger factor" scales from 0 (at the ideal ratio) to 1 (at the collapse ratio).
-                    # This determines what percentage of growth energy MUST go to the core.
-                    ideal_minus_min = C.PLANT_IDEAL_CORE_TO_CANOPY_AREA_RATIO - C.PLANT_MIN_CORE_TO_CANOPY_RATIO
-                    if ideal_minus_min > 0:
-                        danger_factor = (C.PLANT_IDEAL_CORE_TO_CANOPY_AREA_RATIO - current_ratio) / ideal_minus_min
-                        danger_factor = max(0, min(1, danger_factor)) # Clamp between 0 and 1
-                    else:
-                        danger_factor = 1.0 # Failsafe if min and ideal are the same
-
-                    core_investment = growth_energy * danger_factor
-                    canopy_root_investment = growth_energy - core_investment
+                    core_investment = growth_energy
+                    # canopy_root_investment remains 0
                     if is_debug_focused:
-                        log.log(f"    Allocation (Structural): Top-heavy! Ratio={current_ratio:.4f} (Ideal: {C.PLANT_IDEAL_CORE_TO_CANOPY_AREA_RATIO:.4f}, Min: {C.PLANT_MIN_CORE_TO_CANOPY_RATIO:.4f})")
-                        log.log(f"    Allocation (Structural): Danger Factor={danger_factor:.2f}. Investing {core_investment:.4f} J in Core, {canopy_root_investment:.4f} J in Canopy/Roots.")
+                        log.log(f"    Allocation (Structural): RECOVERY MODE. Ratio={current_ratio:.4f} is below ideal {C.PLANT_IDEAL_CORE_TO_CANOPY_AREA_RATIO:.4f}.")
+                        log.log(f"    Allocation (Structural): Investing 100% of growth energy ({growth_energy:.4f} J) into Core.")
+                
+                # --- MODE 2: NORMAL GROWTH ---
+                # If the plant is stable, it allocates growth proportionally.
+                else:
+                    core_investment = growth_energy * C.PLANT_STABLE_CORE_INVESTMENT_RATIO
+                    canopy_root_investment = growth_energy * (1.0 - C.PLANT_STABLE_CORE_INVESTMENT_RATIO)
+                    if is_debug_focused:
+                        log.log(f"    Allocation (Structural): Normal Growth. Investing {core_investment:.4f} J in Core, {canopy_root_investment:.4f} J in Canopy/Roots.")
+
+            # If canopy_area is tiny, treat as normal growth to get started.
+            else:
+                core_investment = growth_energy * C.PLANT_STABLE_CORE_INVESTMENT_RATIO
+                canopy_root_investment = growth_energy * (1.0 - C.PLANT_STABLE_CORE_INVESTMENT_RATIO)
 
             total_limitation = self.environment_eff + soil_eff
             if total_limitation > 0:
