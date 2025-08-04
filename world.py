@@ -1,6 +1,7 @@
 #world.py
 
 import pygame
+import numpy as np
 from creatures import Plant, Animal
 import constants as C
 from camera import Camera
@@ -22,14 +23,22 @@ class World:
         self.world_boundary = Rectangle(C.WORLD_WIDTH_CM / 2, C.WORLD_HEIGHT_CM / 2, C.WORLD_WIDTH_CM / 2, C.WORLD_HEIGHT_CM / 2)
         self.time_manager = TimeManager()
         
-        # --- NEW: The scheduler for plant logic updates ---
-        # A dictionary where keys are future simulation times (in seconds)
-        # and values are lists of plants to update at that time.
+        # --- The scheduler for plant logic updates ---
         self.plant_update_schedule = {}
         self.animal_update_schedule = {}
 
         self.quadtree = QuadTree(self.world_boundary, C.QUADTREE_CAPACITY)
         
+        # --- NEW: Global Competition Grid System ---
+        self.next_competition_update_time = 0.0 # The sim time at which the next global update will occur.
+        grid_width = int(C.WORLD_WIDTH_CM // C.LIGHT_GRID_CELL_SIZE_CM)
+        grid_height = int(C.WORLD_HEIGHT_CM // C.LIGHT_GRID_CELL_SIZE_CM)
+        # The light grid stores the height of the tallest canopy in each cell.
+        self.light_grid = np.zeros((grid_width, grid_height), dtype=np.float32)
+        # The root grid stores the summed root radius of all plants in each cell, as a proxy for density.
+        self.root_grid = np.zeros((grid_width, grid_height), dtype=np.float32)
+        log.log(f"Competition grids initialized with size ({grid_width}x{grid_height}).")
+
         self.debug_focused_creature_id = None
         self.max_plant_radius = 0.0 # The radius of the largest plant in the world, in cm.
         
@@ -158,6 +167,90 @@ class World:
         else:
             self.max_plant_radius = max(p.radius for p in self.plants)
 
+    def _populate_competition_grids(self):
+        """Pass 1: Populate the light and root grids with data from all plants."""
+        self.light_grid.fill(0)
+        self.root_grid.fill(0)
+
+        for plant in self.plants:
+            if plant.radius <= 0: continue
+
+            # --- Rasterize Canopy for Light Grid ---
+            min_gx = int(max(0, (plant.x - plant.radius) / C.LIGHT_GRID_CELL_SIZE_CM))
+            max_gx = int(min(self.light_grid.shape[0] - 1, (plant.x + plant.radius) / C.LIGHT_GRID_CELL_SIZE_CM))
+            min_gy = int(max(0, (plant.y - plant.radius) / C.LIGHT_GRID_CELL_SIZE_CM))
+            max_gy = int(min(self.light_grid.shape[1] - 1, (plant.y + plant.radius) / C.LIGHT_GRID_CELL_SIZE_CM))
+
+            for gx in range(min_gx, max_gx + 1):
+                for gy in range(min_gy, max_gy + 1):
+                    cell_wx = (gx + 0.5) * C.LIGHT_GRID_CELL_SIZE_CM
+                    cell_wy = (gy + 0.5) * C.LIGHT_GRID_CELL_SIZE_CM
+                    dist_sq = (plant.x - cell_wx)**2 + (plant.y - cell_wy)**2
+                    if dist_sq <= plant.radius**2:
+                        self.light_grid[gx, gy] = max(self.light_grid[gx, gy], plant.height)
+
+            # --- Rasterize Roots for Root Grid ---
+            min_gx_root = int(max(0, (plant.x - plant.root_radius) / C.LIGHT_GRID_CELL_SIZE_CM))
+            max_gx_root = int(min(self.root_grid.shape[0] - 1, (plant.x + plant.root_radius) / C.LIGHT_GRID_CELL_SIZE_CM))
+            min_gy_root = int(max(0, (plant.y - plant.root_radius) / C.LIGHT_GRID_CELL_SIZE_CM))
+            max_gy_root = int(min(self.root_grid.shape[1] - 1, (plant.y + plant.root_radius) / C.LIGHT_GRID_CELL_SIZE_CM))
+
+            for gx in range(min_gx_root, max_gx_root + 1):
+                for gy in range(min_gy_root, max_gy_root + 1):
+                    cell_wx = (gx + 0.5) * C.LIGHT_GRID_CELL_SIZE_CM
+                    cell_wy = (gy + 0.5) * C.LIGHT_GRID_CELL_SIZE_CM
+                    dist_sq = (plant.x - cell_wx)**2 + (plant.y - cell_wy)**2
+                    if dist_sq <= plant.root_radius**2:
+                        self.root_grid[gx, gy] += plant.root_radius # Add radius as pressure proxy
+
+    def _calculate_plant_competition(self):
+        """Pass 2: Use the populated grids to calculate competition for each plant."""
+        cell_area = C.LIGHT_GRID_CELL_SIZE_CM ** 2
+
+        for plant in self.plants:
+            plant.shaded_canopy_area = 0.0
+            plant.overlapped_root_area = 0.0
+            if plant.radius <= 0: continue
+
+            # --- Calculate Shaded Area ---
+            min_gx = int(max(0, (plant.x - plant.radius) / C.LIGHT_GRID_CELL_SIZE_CM))
+            max_gx = int(min(self.light_grid.shape[0] - 1, (plant.x + plant.radius) / C.LIGHT_GRID_CELL_SIZE_CM))
+            min_gy = int(max(0, (plant.y - plant.radius) / C.LIGHT_GRID_CELL_SIZE_CM))
+            max_gy = int(min(self.light_grid.shape[1] - 1, (plant.y + plant.radius) / C.LIGHT_GRID_CELL_SIZE_CM))
+
+            for gx in range(min_gx, max_gx + 1):
+                for gy in range(min_gy, max_gy + 1):
+                    cell_wx = (gx + 0.5) * C.LIGHT_GRID_CELL_SIZE_CM
+                    cell_wy = (gy + 0.5) * C.LIGHT_GRID_CELL_SIZE_CM
+                    dist_sq = (plant.x - cell_wx)**2 + (plant.y - cell_wy)**2
+                    if dist_sq <= plant.radius**2:
+                        if plant.height < self.light_grid[gx, gy]:
+                            plant.shaded_canopy_area += cell_area
+
+            # --- Calculate Root Overlap ---
+            min_gx_root = int(max(0, (plant.x - plant.root_radius) / C.LIGHT_GRID_CELL_SIZE_CM))
+            max_gx_root = int(min(self.root_grid.shape[0] - 1, (plant.x + plant.root_radius) / C.LIGHT_GRID_CELL_SIZE_CM))
+            min_gy_root = int(max(0, (plant.y - plant.root_radius) / C.LIGHT_GRID_CELL_SIZE_CM))
+            max_gy_root = int(min(self.root_grid.shape[1] - 1, (plant.y + plant.root_radius) / C.LIGHT_GRID_CELL_SIZE_CM))
+
+            my_root_area = plant.root_radius**2 * np.pi
+
+            for gx in range(min_gx_root, max_gx_root + 1):
+                for gy in range(min_gy_root, max_gy_root + 1):
+                    cell_wx = (gx + 0.5) * C.LIGHT_GRID_CELL_SIZE_CM
+                    cell_wy = (gy + 0.5) * C.LIGHT_GRID_CELL_SIZE_CM
+                    dist_sq = (plant.x - cell_wx)**2 + (plant.y - cell_wy)**2
+                    if dist_sq <= plant.root_radius**2:
+                        total_pressure = self.root_grid[gx, gy]
+                        if total_pressure > plant.root_radius:
+                            # Ratio of competition is how much pressure is NOT from this plant
+                            overlap_ratio = (total_pressure - plant.root_radius) / total_pressure
+                            plant.overlapped_root_area += cell_area * overlap_ratio
+            
+            # Clamp values to be safe
+            plant.shaded_canopy_area = min(plant.shaded_canopy_area, plant.radius**2 * np.pi)
+            plant.overlapped_root_area = min(plant.overlapped_root_area, my_root_area)
+
     def _process_housekeeping(self):
         """Handles adding newborns to the main lists and removing dead creatures."""
         # --- Housekeeping ---
@@ -195,7 +288,20 @@ class World:
         start_time = self.time_manager.total_sim_seconds
         end_time = start_time + large_delta_time
 
-        # --- NEW: Continuously process events in a loop until the time window is filled ---
+        # --- NEW: Process global updates that fall within this time slice ---
+        while self.next_competition_update_time < end_time:
+            # Set the clock to the precise time of this global event to maintain temporal accuracy
+            self.time_manager.total_sim_seconds = self.next_competition_update_time
+            log.log(f"--- Performing Global Competition Update at Day {self.time_manager.total_sim_seconds / C.SECONDS_PER_DAY:.1f} ---")
+            self._populate_competition_grids()
+            self._calculate_plant_competition()
+            # Schedule the next update
+            self.next_competition_update_time += C.PLANT_COMPETITION_UPDATE_INTERVAL_SECONDS
+        
+        # Restore the clock to where it was before we started processing individual events
+        self.time_manager.total_sim_seconds = start_time
+
+        # --- Continuously process individual creature events in a loop until the time window is filled ---
         while True:
             # Find the time of the very next scheduled event, if any
             next_plant_time = min(self.plant_update_schedule.keys()) if self.plant_update_schedule else float('inf')

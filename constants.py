@@ -86,6 +86,14 @@ UI_LOADING_BAR_WIDTH = 400
 UI_LOADING_BAR_HEIGHT = 30
 
 # =============================================================================
+# --- SIMULATION GRID CONSTANTS ---
+# =============================================================================
+# The side length of a single cell in the competition grids (Light & Root).
+# A smaller value increases accuracy but decreases performance.
+# Unit: Centimeters (cm)
+LIGHT_GRID_CELL_SIZE_CM = 50.0
+
+# =============================================================================
 # --- PHYSICS & BIOLOGY CONSTANTS (REAL-WORLD VALUES) ---
 # =============================================================================
 # This section defines foundational, real-world physical and biological values.

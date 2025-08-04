@@ -109,58 +109,6 @@ class Plant(Creature):
         elif C.TERRAIN_GRASS_LEVEL <= elevation < C.TERRAIN_DIRT_LEVEL: return "dirt"
         else: return None
 
-    def _calculate_circle_intersection_area(self, d, r1, r2):
-        """Calculates the area of intersection of two circles."""
-        if d <= 0: # Handle case where circles are concentric or d is invalid
-            return math.pi * min(r1, r2)**2
-        if d >= r1 + r2:
-            return 0  # Circles do not intersect
-        if d <= abs(r1 - r2):
-            return math.pi * min(r1, r2)**2  # One circle is contained within the other
-
-        r1_sq, r2_sq, d_sq = r1**2, r2**2, d**2
-        
-        # Formula for the area of intersection of two circles
-        term1 = r1_sq * math.acos((d_sq + r1_sq - r2_sq) / (2 * d * r1))
-        term2 = r2_sq * math.acos((d_sq + r2_sq - r1_sq) / (2 * d * r2))
-        term3 = 0.5 * math.sqrt((-d + r1 + r2) * (d + r1 - r2) * (d - r1 + r2) * (d + r1 + r2))
-        
-        return term1 + term2 - term3
-
-    def calculate_physical_overlap(self, world):
-        """Calculates the total geometric area of canopy and root overlap with neighbors."""
-        total_shaded_canopy_area = 0
-        total_overlapped_root_area = 0
-
-        # --- OPTIMIZATION: Query for neighbors only ONCE ---
-        # The search radius is now dynamic, based on our radius and the largest plant in the world.
-        # This is the smallest possible radius that guarantees we find all potential interactors.
-        search_radius_cm = self.radius + world.max_plant_radius
-        search_area = Rectangle(self.x, self.y, search_radius_cm, search_radius_cm)
-        neighbors = world.quadtree.query(search_area, [])
-
-        for neighbor in neighbors:
-            if neighbor is self or not isinstance(neighbor, Plant):
-                continue
-
-            dist = math.sqrt((self.x - neighbor.x)**2 + (self.y - neighbor.y)**2)
-
-            # --- Canopy Competition (for light) ---
-            # If we are taller or the same height, the neighbor cannot shade us.
-            if self.height < neighbor.height:
-                if dist < self.radius + neighbor.radius:
-                    total_shaded_canopy_area += self._calculate_circle_intersection_area(dist, self.radius, neighbor.radius)
-
-            # --- Root Competition (for water/nutrients) ---
-            if dist < self.root_radius + neighbor.root_radius:
-                total_overlapped_root_area += self._calculate_circle_intersection_area(dist, self.root_radius, neighbor.root_radius)
-
-        # A plant's shaded area cannot exceed its own total area.
-        my_canopy_area = math.pi * self.radius**2
-        my_root_area = math.pi * self.root_radius**2
-        
-        return min(total_shaded_canopy_area, my_canopy_area), min(total_overlapped_root_area, my_root_area)
-
     def _update_seed(self, world, time_step, is_debug_focused):
         """Logic for when the plant is a dormant seed."""
         # --- 1. Dormancy Metabolism ---
@@ -195,11 +143,9 @@ class Plant(Creature):
             log.log(f" State ({self.life_stage}): Energy={self.energy:.2f}, ReproEnergy={self.reproductive_energy_stored:.2f}, Radius={self.radius:.2f}, Height={self.height:.2f}")
 
 # --- CORE BIOLOGY LOGIC (Calculations now use time_step directly) ---
-        self.competition_update_accumulator += time_step
-        if self.competition_update_accumulator >= C.PLANT_COMPETITION_UPDATE_INTERVAL_SECONDS:
-            if is_debug_focused: log.log(f"DEBUG ({self.id}): Recalculating physical competition.")
-            self.shaded_canopy_area, self.overlapped_root_area = self.calculate_physical_overlap(world)
-            self.competition_update_accumulator %= C.PLANT_COMPETITION_UPDATE_INTERVAL_SECONDS
+        # The competition values (self.shaded_canopy_area, self.overlapped_root_area) are now
+        # calculated and updated globally by the World class on a fixed interval.
+        # The per-plant accumulator and call to calculate_physical_overlap have been removed.
 
         canopy_area = math.pi * self.radius**2
         root_area = math.pi * self.root_radius**2
