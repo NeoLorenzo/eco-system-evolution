@@ -358,24 +358,30 @@ class Plant(Creature):
         
         if growth_energy > 0:
             # --- DYNAMIC CORE GROWTH ALLOCATION ---
-            # The plant first determines if it needs to invest in its core for stability.
+            # The plant determines if it is structurally unstable and must invest in its core.
             core_investment = 0
             canopy_root_investment = growth_energy
             
             # Avoid division by zero for brand new plants
             if canopy_area > 1.0:
-                current_ratio = (math.pi * self.core_radius**2) / canopy_area
-                deficit = C.PLANT_IDEAL_CORE_TO_CANOPY_AREA_RATIO - current_ratio
+                current_ratio = core_area / canopy_area
                 
-                # If the plant is "top heavy", it must invest in its core.
-                if deficit > 0:
-                    # The priority is a value from 0-1 indicating how urgently we need to grow the core.
-                    structural_priority = min(1.0, deficit / C.PLANT_IDEAL_CORE_TO_CANOPY_AREA_RATIO)
-                    core_investment = growth_energy * structural_priority
+                # If the plant is "top heavy" (ratio is below the ideal), it must consider corrective growth.
+                if current_ratio < C.PLANT_IDEAL_CORE_TO_CANOPY_AREA_RATIO:
+                    # The "danger factor" scales from 0 (at the ideal ratio) to 1 (at the collapse ratio).
+                    # This determines what percentage of growth energy MUST go to the core.
+                    ideal_minus_min = C.PLANT_IDEAL_CORE_TO_CANOPY_AREA_RATIO - C.PLANT_MIN_CORE_TO_CANOPY_RATIO
+                    if ideal_minus_min > 0:
+                        danger_factor = (C.PLANT_IDEAL_CORE_TO_CANOPY_AREA_RATIO - current_ratio) / ideal_minus_min
+                        danger_factor = max(0, min(1, danger_factor)) # Clamp between 0 and 1
+                    else:
+                        danger_factor = 1.0 # Failsafe if min and ideal are the same
+
+                    core_investment = growth_energy * danger_factor
                     canopy_root_investment = growth_energy - core_investment
                     if is_debug_focused:
-                        log.log(f"    Allocation (Structural): Core/Canopy Ratio={current_ratio:.4f} (Ideal: {C.PLANT_IDEAL_CORE_TO_CANOPY_AREA_RATIO:.4f}), Deficit={deficit:.4f}")
-                        log.log(f"    Allocation (Structural): Priority={structural_priority:.2f}. Investing {core_investment:.4f} J in Core, {canopy_root_investment:.4f} J in Canopy/Roots.")
+                        log.log(f"    Allocation (Structural): Top-heavy! Ratio={current_ratio:.4f} (Ideal: {C.PLANT_IDEAL_CORE_TO_CANOPY_AREA_RATIO:.4f}, Min: {C.PLANT_MIN_CORE_TO_CANOPY_RATIO:.4f})")
+                        log.log(f"    Allocation (Structural): Danger Factor={danger_factor:.2f}. Investing {core_investment:.4f} J in Core, {canopy_root_investment:.4f} J in Canopy/Roots.")
 
             total_limitation = self.environment_eff + soil_eff
             if total_limitation > 0:
@@ -466,6 +472,18 @@ class Plant(Creature):
                         self.reproductive_organs.remove(fruit)
                 elif is_debug_focused:
                     log.log(f"    REPRODUCTION: Fruits are ready to drop, but plant lacks energy to provision a seed ({self.energy:.2f} < {C.PLANT_SEED_PROVISIONING_ENERGY}).")
+
+        # --- NEW: Structural Collapse Check ---
+        # This check happens at the very end of the update, after all growth and pruning.
+        if self.is_alive and self.life_stage != "seed":
+            final_canopy_area = math.pi * self.radius**2
+            if final_canopy_area > 1.0: # Only check for non-trivial plants
+                final_core_area = math.pi * self.core_radius**2
+                final_ratio = final_core_area / final_canopy_area
+                if final_ratio < C.PLANT_MIN_CORE_TO_CANOPY_RATIO:
+                    if is_debug_focused:
+                        log.log(f"DEATH ({self.id}): Plant collapsed under its own weight. Core/Canopy Ratio was {final_ratio:.4f} (Min: {C.PLANT_MIN_CORE_TO_CANOPY_RATIO:.4f}).")
+                    self.die(world, "structural_failure")
 
         if is_debug_focused:
             log.log(f"--- END LOGIC {self.id} --- Final Energy: {self.energy:.2f}")

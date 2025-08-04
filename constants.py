@@ -279,6 +279,11 @@ PLANT_SPROUT_RADIUS_CM = 1.0
 # Unit: Unitless ratio (area/area)
 PLANT_IDEAL_CORE_TO_CANOPY_AREA_RATIO = 0.1
 
+# The absolute minimum ratio of core area to canopy area. If a plant's ratio
+# drops below this, it collapses under its own weight.
+# Unit: Unitless ratio (area/area)
+PLANT_MIN_CORE_TO_CANOPY_RATIO = 0.03
+
 # The initial radius of a seedling's structural core right after sprouting.
 # Unit: Centimeters (cm)
 PLANT_SPROUT_CORE_RADIUS_CM = 0.2
