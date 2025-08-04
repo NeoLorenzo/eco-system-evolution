@@ -134,7 +134,13 @@ class Plant(Creature):
                 self.root_radius = C.PLANT_SPROUT_RADIUS_CM
                 self.core_radius = C.PLANT_SPROUT_CORE_RADIUS_CM
                 self.height = self.radius * self.radius_to_height_factor # Use instance variable
-                world.plant_manager.heights[self.index] = self.height
+                
+                # Update all manager arrays with new seedling values
+                pm = world.plant_manager
+                pm.heights[self.index] = self.height
+                pm.radii[self.index] = self.radius
+                pm.root_radii[self.index] = self.root_radius
+                pm.core_radii[self.index] = self.core_radius
             elif is_debug_focused:
                 log.log(f"DEBUG ({self.id}): Conditions met to sprout, but not enough energy ({self.energy:.2f} < {C.PLANT_SPROUTING_ENERGY_COST}).")
         elif is_debug_focused:
@@ -239,7 +245,13 @@ class Plant(Creature):
                     self.root_radius = math.sqrt(new_root_area / math.pi)
                     self.core_radius = math.sqrt(new_core_area / math.pi)
                     self.height = self.radius * self.radius_to_height_factor # Use instance variable
-                    world.plant_manager.heights[self.index] = self.height
+
+                    # Update all manager arrays with new pruned values
+                    pm = world.plant_manager
+                    pm.heights[self.index] = self.height
+                    pm.radii[self.index] = self.radius
+                    pm.root_radii[self.index] = self.root_radius
+                    pm.core_radii[self.index] = self.core_radius
 
                     if is_debug_focused:
                         log.log(f"      - New Radii: Canopy={self.radius:.2f}, Core={self.core_radius:.2f}.")
@@ -348,10 +360,11 @@ class Plant(Creature):
 
                 # 1. Grow the Core
                 if core_investment > 0:
-                    # --- CHANGE: Use the new, more expensive constant for core growth ---
+                # --- CHANGE: Use the new, more expensive constant for core growth ---
                     added_core_area = core_investment / C.PLANT_CORE_BIOMASS_ENERGY_COST
                     new_core_area = (math.pi * self.core_radius**2) + added_core_area
                     self.core_radius = math.sqrt(new_core_area / math.pi)
+                    world.plant_manager.core_radii[self.index] = self.core_radius
 
                 # 2. Grow Canopy and Roots with remaining energy
                 if canopy_root_investment > 0:
@@ -363,8 +376,12 @@ class Plant(Creature):
                     
                     new_canopy_area = canopy_area + added_canopy_area
                     self.radius = math.sqrt(new_canopy_area / math.pi)
+                    world.plant_manager.radii[self.index] = self.radius
+
                     new_root_area = root_area + added_root_area
                     self.root_radius = math.sqrt(new_root_area / math.pi)
+                    world.plant_manager.root_radii[self.index] = self.root_radius
+
                     self.height = self.radius * self.radius_to_height_factor # Use instance variable
                     world.plant_manager.heights[self.index] = self.height
                 

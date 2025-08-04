@@ -18,9 +18,12 @@ class PlantManager:
         self.count = 0 # The actual number of living plants.
 
         # --- Attributes stored in NumPy arrays ---
-        # We are starting by only vectorizing 'age' and its resulting efficiency.
         self.ages = np.zeros(initial_capacity, dtype=np.float64)
         self.heights = np.zeros(initial_capacity, dtype=np.float32)
+        self.radii = np.zeros(initial_capacity, dtype=np.float32)
+        self.root_radii = np.zeros(initial_capacity, dtype=np.float32)
+        self.core_radii = np.zeros(initial_capacity, dtype=np.float32)
+
         self.aging_efficiencies = np.ones(initial_capacity, dtype=np.float32)
         self.hydraulic_efficiencies = np.ones(initial_capacity, dtype=np.float32)
 
@@ -39,6 +42,9 @@ class PlantManager:
         # Add the plant's attributes to the NumPy arrays at its new index.
         self.ages[self.count] = plant.age
         self.heights[self.count] = plant.height
+        self.radii[self.count] = plant.radius
+        self.root_radii[self.count] = plant.root_radius
+        self.core_radii[self.count] = plant.core_radius
 
         # Increment the count of living plants.
         self.count += 1
@@ -53,6 +59,9 @@ class PlantManager:
         # Create new, larger arrays and copy the old data over.
         self.ages = np.resize(self.ages, new_capacity)
         self.heights = np.resize(self.heights, new_capacity)
+        self.radii = np.resize(self.radii, new_capacity)
+        self.root_radii = np.resize(self.root_radii, new_capacity)
+        self.core_radii = np.resize(self.core_radii, new_capacity)
         self.aging_efficiencies = np.resize(self.aging_efficiencies, new_capacity)
         self.hydraulic_efficiencies = np.resize(self.hydraulic_efficiencies, new_capacity)
         
