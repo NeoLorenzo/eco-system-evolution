@@ -285,6 +285,9 @@ class World:
         Processes all scheduled events within a large time window efficiently.
         This is the new main entry point for simulation logic from main.py.
         """
+        # --- NEW: Perform vectorized calculations once before the main loop ---
+        self.plant_manager.update_aging_efficiencies()
+
         start_time = self.time_manager.total_sim_seconds
         end_time = start_time + large_delta_time
 

@@ -65,6 +65,7 @@ class Plant(Creature):
     def __init__(self, world, x, y, initial_energy=C.CREATURE_INITIAL_ENERGY):
         super().__init__(x, y, initial_energy)
         self.genes = PlantGenes()
+        self.index = -1 # Will be set by the PlantManager upon registration.
         
         # --- NEW: Life Cycle State ---
         self.life_stage = "seed" # Start as a seed
@@ -176,7 +177,10 @@ class Plant(Creature):
         root_to_canopy_ratio = self.root_radius / (self.radius + 1)
                 # --- CHANGE: Soil efficiency is now penalized by root competition ---
         soil_eff = max_soil_eff * min(1.0, root_to_canopy_ratio * C.PLANT_ROOT_EFFICIENCY_FACTOR) * root_competition_eff
-        aging_efficiency = math.exp(-(self.age / C.PLANT_SENESCENCE_TIMESCALE_SECONDS))
+        
+        # --- NEW: Fetch the pre-calculated aging efficiency from the manager ---
+        aging_efficiency = world.plant_manager.aging_efficiencies[self.index]
+
         # --- NEW: Calculate hydraulic efficiency based on height ---
         hydraulic_efficiency = math.exp(-(self.height / C.PLANT_MAX_HYDRAULIC_HEIGHT_CM))
         
@@ -394,6 +398,9 @@ class Plant(Creature):
         if not self.is_alive: return
 
         self.age += time_step
+        # --- NEW: Update the master 'ages' array in the manager ---
+        world.plant_manager.ages[self.index] = self.age
+        
         is_debug_focused = (world.debug_focused_creature_id == self.id)
 
         if is_debug_focused:
