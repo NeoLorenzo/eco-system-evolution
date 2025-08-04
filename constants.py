@@ -336,9 +336,10 @@ PLANT_INITIAL_ROOT_RADIUS_CM = 10.0
 PLANT_CORE_PERSONAL_SPACE_FACTOR = 1.5
 PLANT_ROOT_EFFICIENCY_FACTOR = 2.0
 
-# The radius a plant must reach to no longer be vulnerable to being crushed by a neighbor's core.
+# The amount of new core radius growth required before a plant performs an expensive
+# check to see if it has crushed any neighbors. This prevents checking every tick.
 # Unit: Centimeters (cm)
-PLANT_CRUSH_RESISTANCE_RADIUS_CM = 25.0
+PLANT_CRUSH_CHECK_GROWTH_THRESHOLD_CM = 5.0
 
 # --- Genetic Traits & Environmental Interaction ---
 PLANT_OPTIMAL_TEMPERATURE = 0.65

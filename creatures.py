@@ -86,6 +86,7 @@ class Plant(Creature):
         self.has_reached_self_sufficiency = False # Has the plant ever had a positive energy balance?
         self.shaded_canopy_area = 0.0 # The area of our canopy shaded by neighbors, in cm^2
         self.overlapped_root_area = 0.0 # The area of our roots competing with neighbors, in cm^2
+        self.core_growth_since_crush_check = 0.0 # Accumulated core radius growth for crush check, in cm
 
         self.elevation = world.environment.get_elevation(self.x, self.y)  # Cached elevation, unitless [0, 1]
         self.soil_type = self.get_soil_type(self.elevation)  # Type of soil at location (e.g., "sand", "grass")
@@ -363,23 +364,28 @@ class Plant(Creature):
                 if is_debug_focused:
                     log.log(f"      - Growth: New Radius={self.radius:.2f}, New Core Radius={self.core_radius:.2f}")
 
-                # --- OPTIMIZATION: Crush check uses the new independent core_radius ---
+                # --- OPTIMIZATION: Crush check is now throttled by a growth threshold ---
                 if self.core_radius > old_core_radius:
-                    search_area = Rectangle(self.x, self.y, self.core_radius, self.core_radius)
-                    neighbors = world.quadtree.query(search_area, [])
-                    for neighbor in neighbors:
-                        if neighbor is self or not isinstance(neighbor, Plant) or not neighbor.is_alive:
-                            continue
-                        
-                        if neighbor.radius < self.core_radius:
+                    self.core_growth_since_crush_check += self.core_radius - old_core_radius
+                    
+                    # Only run the expensive query if significant growth has occurred.
+                    if self.core_growth_since_crush_check >= C.PLANT_CRUSH_CHECK_GROWTH_THRESHOLD_CM:
+                        search_area = Rectangle(self.x, self.y, self.core_radius, self.core_radius)
+                        neighbors = world.quadtree.query(search_area, [])
+                        for neighbor in neighbors:
+                            if neighbor is self or not isinstance(neighbor, Plant) or not neighbor.is_alive:
+                                continue
+                            
+                            # The check is now purely physical: does my core overlap their center?
                             dist_sq = (self.x - neighbor.x)**2 + (self.y - neighbor.y)**2
-                            #if is_debug_focused:
-                                #log.log(f"      - Crush Check: vs Neighbor {neighbor.id}. Dist^2={dist_sq:.2f}, My Core Radius^2={self.core_radius**2:.2f}")
                             if dist_sq < self.core_radius**2:
                                 neighbor_is_debug_focused = (world.debug_focused_creature_id == neighbor.id)
                                 if is_debug_focused or neighbor_is_debug_focused:
                                     log.log(f"DEATH ({neighbor.id}): Crushed by the growing core of Plant ID {self.id}.")
                                 neighbor.die(world, "core_crush")
+                        
+                        # Reset the accumulator after the check.
+                        self.core_growth_since_crush_check = 0.0
 
             elif is_debug_focused:
                 log.log(f"      - Decision: CANNOT GROW (Total limitation factor is zero).")
