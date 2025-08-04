@@ -259,27 +259,35 @@ class Plant(Creature):
                 # Calculate the total area of biomass that needs to be shed to offset the deficit.
                 area_to_shed = (energy_deficit / maintenance_cost_per_area_tick) * C.PLANT_PRUNING_EFFICIENCY
                 
-                # Shed area proportionally from canopy and roots (non-core biomass).
-                total_sheddable_area = canopy_area + root_area
+                # --- CHANGE: Shed area proportionally from ALL living tissues, including the core. ---
+                total_sheddable_area = canopy_area + root_area + core_area
                 if total_sheddable_area > 0:
-                    canopy_shed_fraction = canopy_area / total_sheddable_area
+                    # Determine the fraction of the total area each component represents.
+                    canopy_fraction = canopy_area / total_sheddable_area
+                    root_fraction = root_area / total_sheddable_area
+                    core_fraction = core_area / total_sheddable_area
                     
-                    shed_canopy_area = area_to_shed * canopy_shed_fraction
-                    shed_root_area = area_to_shed * (1.0 - canopy_shed_fraction)
+                    # Calculate how much area to shed from each component.
+                    shed_canopy_area = area_to_shed * canopy_fraction
+                    shed_root_area = area_to_shed * root_fraction
+                    shed_core_area = area_to_shed * core_fraction
 
                     if is_debug_focused:
-                        log.log(f"    PRUNING: Energy deficit of {energy_deficit:.4f} J. Shedding {area_to_shed:.2f} cm^2 of biomass.")
-                        log.log(f"      - Old Radius: {self.radius:.2f} (Area: {canopy_area:.2f}). Shedding {shed_canopy_area:.2f} cm^2.")
+                        log.log(f"    PRUNING: Energy deficit of {energy_deficit:.4f} J. Shedding {area_to_shed:.2f} cm^2 of total biomass.")
+                        log.log(f"      - Old Radii: Canopy={self.radius:.2f}, Core={self.core_radius:.2f}. Shedding {shed_canopy_area:.2f} (canopy), {shed_core_area:.2f} (core) cm^2.")
 
-                    # Calculate new areas and radii, ensuring they don't go below zero.
+                    # Calculate new areas and radii for all components, ensuring they don't go below zero.
                     new_canopy_area = max(0, canopy_area - shed_canopy_area)
                     new_root_area = max(0, root_area - shed_root_area)
+                    new_core_area = max(0, core_area - shed_core_area)
+                    
                     self.radius = math.sqrt(new_canopy_area / math.pi)
                     self.root_radius = math.sqrt(new_root_area / math.pi)
+                    self.core_radius = math.sqrt(new_core_area / math.pi)
                     self.height = self.radius * self.radius_to_height_factor # Use instance variable
 
                     if is_debug_focused:
-                        log.log(f"      - New Radius: {self.radius:.2f} (Area: {new_canopy_area:.2f}).")
+                        log.log(f"      - New Radii: Canopy={self.radius:.2f}, Core={self.core_radius:.2f}.")
 
             # By pruning, the plant has "paid" its energy deficit for this tick with biomass.
             # We set net production to zero to prevent a "double penalty" (losing biomass AND stored energy).
