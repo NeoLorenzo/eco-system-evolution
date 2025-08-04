@@ -1,6 +1,7 @@
 # plant_manager.py
 import numpy as np
 import constants as C
+import logger as log
 
 class PlantManager:
     """
@@ -94,14 +95,58 @@ class PlantManager:
         # This replaces a loop of individual math.exp calls with one NumPy operation.
         self.hydraulic_efficiencies[:self.count] = np.exp(-(live_heights / C.PLANT_MAX_HYDRAULIC_HEIGHT_CM))
 
-    def remove_plant(self, plant):
-        """Removes a plant object from the list."""
-        # This part of the refactor is complex and will be handled in a later step.
-        # For now, we just remove from the list to prevent crashes.
-        if plant in self.plants:
-            self.plants.remove(plant)
-            # Note: This creates a mismatch between the list and the NumPy arrays.
-            # This is acceptable for now, as we are focused on the update performance.
+    def remove_plant(self, plant_to_remove):
+        """
+        Removes a plant efficiently using the 'swap and pop' method.
+        This ensures data integrity between the object list and NumPy arrays.
+        """
+        # Ensure the plant is actually in our list and its index is valid. This is a safeguard.
+        if plant_to_remove.index >= self.count or self.plants[plant_to_remove.index] is not plant_to_remove:
+            log.log(f"ERROR: Attempted to remove a plant with an invalid index or that doesn't match the object list. Index: {plant_to_remove.index}")
+            # As a fallback, try a slow search and remove if found. This prevents a crash but indicates a problem.
+            try:
+                self.plants.remove(plant_to_remove)
+            except ValueError:
+                pass # It wasn't in the list anyway.
+            return
+
+        idx_to_remove = plant_to_remove.index
+        last_idx = self.count - 1
+
+        # If the plant to remove is the last one, we don't need to swap.
+        if idx_to_remove == last_idx:
+            log.log(f"DEBUG: Removing last plant at index {idx_to_remove}. No swap needed.")
+        else:
+            # Get the plant object that is currently at the end of the list.
+            last_plant = self.plants[last_idx]
+
+            # --- The SWAP ---
+            # 1. Copy the data from the last element into the slot of the element being removed.
+            self.ages[idx_to_remove] = self.ages[last_idx]
+            self.heights[idx_to_remove] = self.heights[last_idx]
+            self.radii[idx_to_remove] = self.radii[last_idx]
+            self.root_radii[idx_to_remove] = self.root_radii[last_idx]
+            self.core_radii[idx_to_remove] = self.core_radii[last_idx]
+            self.energies[idx_to_remove] = self.energies[last_idx]
+            self.reproductive_energies_stored[idx_to_remove] = self.reproductive_energies_stored[last_idx]
+            self.aging_efficiencies[idx_to_remove] = self.aging_efficiencies[last_idx]
+            self.hydraulic_efficiencies[idx_to_remove] = self.hydraulic_efficiencies[last_idx]
+
+            # 2. Move the 'last_plant' object to the now-vacant slot in the Python list.
+            self.plants[idx_to_remove] = last_plant
+
+            # 3. CRITICAL: Update the index of the plant that we just moved.
+            last_plant.index = idx_to_remove
+            
+            log.log(f"DEBUG: Removing plant at index {idx_to_remove}. Swapped with last plant from index {last_idx}. Moved plant ID: {last_plant.id}")
+
+        # --- The POP ---
+        # The last element in the list is now a duplicate, so we remove it.
+        self.plants.pop()
+        
+        # Decrement the total count of plants. The data at 'last_idx' in the NumPy arrays
+        # is now considered garbage and will be overwritten by the next new plant.
+        self.count -= 1
 
     def __iter__(self):
         """Allows the manager to be iterated over like a list (e.g., 'for plant in manager')."""
@@ -109,4 +154,4 @@ class PlantManager:
 
     def __len__(self):
         """Allows the len() function to be called on the manager."""
-        return len(self.plants)
+        return self.count
