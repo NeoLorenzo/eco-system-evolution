@@ -554,55 +554,6 @@ class Plant(Creature):
         # 5. Create the new seed if the location is valid
         if is_debug_focused: log.log(f"      - Dispersal SUCCESS: Creating new seed.")
         return Plant(world, final_x, final_y, initial_energy=C.PLANT_SEED_PROVISIONING_ENERGY)
-        e_north = world.environment.get_elevation(start_x, start_y - 10)
-        e_south = world.environment.get_elevation(start_x, start_y + 10)
-        e_east = world.environment.get_elevation(start_x + 10, start_y)
-        e_west = world.environment.get_elevation(start_x - 10, start_y)
-
-        grad_y = e_north - e_south # Positive means downhill is South
-        grad_x = e_west - e_east  # Positive means downhill is East
-
-        # 2. Calculate roll distance and direction
-        magnitude = math.sqrt(grad_x**2 + grad_y**2)
-        roll_distance = C.PLANT_SEED_ROLL_BASE_DISTANCE_CM
-        
-        if magnitude > 0.001: # Avoid division by zero and tiny movements
-            # Roll direction is the inverse of the gradient (downhill)
-            roll_dir_x = grad_x / magnitude
-            roll_dir_y = grad_y / magnitude
-            # Roll distance is proportional to the steepness (magnitude of the gradient)
-            roll_distance += magnitude * C.PLANT_SEED_ROLL_DISTANCE_FACTOR
-        else: # On flat ground, roll in a random direction
-            angle = random.uniform(0, 2 * math.pi)
-            roll_dir_x = math.cos(angle)
-            roll_dir_y = math.sin(angle)
-
-        final_x = start_x + roll_dir_x * roll_distance
-        final_y = start_y + roll_dir_y * roll_distance
-
-        if is_debug_focused:
-            log.log(f"    REPRODUCTION: Fruit dropped from parent {self.id}. Start Pos: ({start_x:.1f}, {start_y:.1f}). Slope: {magnitude:.4f}. Roll Dist: {roll_distance:.1f}cm. Final Pos: ({final_x:.1f}, {final_y:.1f}).")
-
-        # 3. Validate the final location
-        # Check if it's in a valid biome (not water)
-        final_elevation = world.environment.get_elevation(final_x, final_y)
-        if final_elevation < C.TERRAIN_WATER_LEVEL:
-            if is_debug_focused: log.log(f"      - Dispersal FAILED: Seed landed in water.")
-            return None
-
-        # Check if the location is overcrowded by other plants' cores
-        search_area = Rectangle(final_x, final_y, C.PLANT_CORE_PERSONAL_SPACE_FACTOR, C.PLANT_CORE_PERSONAL_SPACE_FACTOR)
-        neighbors = world.quadtree.query(search_area, [])
-        for neighbor in neighbors:
-            if isinstance(neighbor, Plant):
-                dist_sq = (final_x - neighbor.x)**2 + (final_y - neighbor.y)**2
-                if dist_sq < neighbor.get_personal_space_radius()**2:
-                    if is_debug_focused: log.log(f"      - Dispersal FAILED: Seed landed too close to neighbor {neighbor.id}'s core.")
-                    return None
-        
-        # 4. Create the new seed if the location is valid
-        if is_debug_focused: log.log(f"      - Dispersal SUCCESS: Creating new seed.")
-        return Plant(world, final_x, final_y, initial_energy=C.PLANT_SEED_PROVISIONING_ENERGY)
 
     def can_reproduce(self):
         # This method is now effectively deprecated and replaced by the fruit-dropping mechanism.
