@@ -20,7 +20,9 @@ class PlantManager:
         # --- Attributes stored in NumPy arrays ---
         # We are starting by only vectorizing 'age' and its resulting efficiency.
         self.ages = np.zeros(initial_capacity, dtype=np.float64)
+        self.heights = np.zeros(initial_capacity, dtype=np.float32)
         self.aging_efficiencies = np.ones(initial_capacity, dtype=np.float32)
+        self.hydraulic_efficiencies = np.ones(initial_capacity, dtype=np.float32)
 
     def add_plant(self, plant):
         """Adds a new plant, linking it to the NumPy arrays via its index."""
@@ -36,6 +38,7 @@ class PlantManager:
 
         # Add the plant's attributes to the NumPy arrays at its new index.
         self.ages[self.count] = plant.age
+        self.heights[self.count] = plant.height
 
         # Increment the count of living plants.
         self.count += 1
@@ -49,7 +52,9 @@ class PlantManager:
 
         # Create new, larger arrays and copy the old data over.
         self.ages = np.resize(self.ages, new_capacity)
+        self.heights = np.resize(self.heights, new_capacity)
         self.aging_efficiencies = np.resize(self.aging_efficiencies, new_capacity)
+        self.hydraulic_efficiencies = np.resize(self.hydraulic_efficiencies, new_capacity)
         
         self.capacity = new_capacity
 
@@ -62,6 +67,17 @@ class PlantManager:
         
         # This one line replaces millions of individual math.exp calls.
         self.aging_efficiencies[:self.count] = np.exp(-(live_ages / C.PLANT_SENESCENCE_TIMESCALE_SECONDS))
+
+    def update_hydraulic_efficiencies(self):
+        """
+        Calculates hydraulic efficiency for ALL plants in a single vectorized operation.
+        This is based on the plant's height.
+        """
+        # We only need to compute for the plants that are actually alive.
+        live_heights = self.heights[:self.count]
+
+        # This replaces a loop of individual math.exp calls with one NumPy operation.
+        self.hydraulic_efficiencies[:self.count] = np.exp(-(live_heights / C.PLANT_MAX_HYDRAULIC_HEIGHT_CM))
 
     def remove_plant(self, plant):
         """Removes a plant object from the list."""

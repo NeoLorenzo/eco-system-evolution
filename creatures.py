@@ -134,6 +134,7 @@ class Plant(Creature):
                 self.root_radius = C.PLANT_SPROUT_RADIUS_CM
                 self.core_radius = C.PLANT_SPROUT_CORE_RADIUS_CM
                 self.height = self.radius * self.radius_to_height_factor # Use instance variable
+                world.plant_manager.heights[self.index] = self.height
             elif is_debug_focused:
                 log.log(f"DEBUG ({self.id}): Conditions met to sprout, but not enough energy ({self.energy:.2f} < {C.PLANT_SPROUTING_ENERGY_COST}).")
         elif is_debug_focused:
@@ -181,8 +182,8 @@ class Plant(Creature):
         # --- NEW: Fetch the pre-calculated aging efficiency from the manager ---
         aging_efficiency = world.plant_manager.aging_efficiencies[self.index]
 
-        # --- NEW: Calculate hydraulic efficiency based on height ---
-        hydraulic_efficiency = math.exp(-(self.height / C.PLANT_MAX_HYDRAULIC_HEIGHT_CM))
+        # --- NEW: Fetch the pre-calculated hydraulic efficiency from the manager ---
+        hydraulic_efficiency = world.plant_manager.hydraulic_efficiencies[self.index]
         
         effective_canopy_area = max(0, canopy_area - self.shaded_canopy_area)
         
@@ -238,6 +239,7 @@ class Plant(Creature):
                     self.root_radius = math.sqrt(new_root_area / math.pi)
                     self.core_radius = math.sqrt(new_core_area / math.pi)
                     self.height = self.radius * self.radius_to_height_factor # Use instance variable
+                    world.plant_manager.heights[self.index] = self.height
 
                     if is_debug_focused:
                         log.log(f"      - New Radii: Canopy={self.radius:.2f}, Core={self.core_radius:.2f}.")
@@ -364,6 +366,7 @@ class Plant(Creature):
                     new_root_area = root_area + added_root_area
                     self.root_radius = math.sqrt(new_root_area / math.pi)
                     self.height = self.radius * self.radius_to_height_factor # Use instance variable
+                    world.plant_manager.heights[self.index] = self.height
                 
                 if is_debug_focused:
                     log.log(f"      - Growth: New Radius={self.radius:.2f}, New Core Radius={self.core_radius:.2f}")
