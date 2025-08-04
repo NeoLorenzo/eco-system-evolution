@@ -33,8 +33,8 @@ TERRAIN_AMPLITUDE = 1.5
 TEMP_NOISE_SEED = 12345
 TERRAIN_NOISE_SEED = 24322
 HUMIDITY_NOISE_SEED = 98765
-TERRAIN_WATER_LEVEL = 0.41
-TERRAIN_SAND_LEVEL = 0.42
+TERRAIN_WATER_LEVEL = 0.31
+TERRAIN_SAND_LEVEL = 0.32
 TERRAIN_GRASS_LEVEL = 0.57
 TERRAIN_DIRT_LEVEL = 0.59
 ENVIRONMENT_VIEW_MODE_COUNT = 3
@@ -65,6 +65,9 @@ COLOR_DRY = (210, 180, 140); COLOR_WET = (70, 130, 180)
 COLOR_PLANT_CANOPY_HEALTHY = (74, 255, 0, 120)
 COLOR_PLANT_CANOPY_SICKLY = (189, 183, 107, 120)
 COLOR_PLANT_CORE = (101, 67, 33)
+COLOR_PLANT_FLOWER = (255, 105, 180, 200) # Bright Pink
+COLOR_PLANT_FRUIT = (220, 20, 60, 255) # Crimson Red
+COLOR_PLANT_SEED = (85, 55, 25) # Dark Brown
 
 TEMP_COLOR_THRESHOLD_COLD = 0.25
 TEMP_COLOR_THRESHOLD_TEMPERATE = 0.5
@@ -214,9 +217,21 @@ PLANT_REPRODUCTIVE_INVESTMENT_J_PER_HOUR = 250.0
 # Unit: Joules (J)
 PLANT_REPRODUCTION_MINIMUM_STORED_ENERGY = 20000.0
 
-# The "sunk cost" to produce the non-seed parts of a fruit (flesh, skin). This energy is consumed by the parent.
+# The energy cost to create and sustain a single flower. This replaces the old fruit structural cost.
 # Unit: Joules (J)
-PLANT_FRUIT_STRUCTURAL_ENERGY_COST = 5000.0
+PLANT_FLOWER_ENERGY_COST = 7500.0
+
+# The lifespan of a flower before it matures into a fruit.
+# Unit: Seconds (s)
+PLANT_FLOWER_LIFESPAN_SECONDS = 604800.0 # (7 Days)
+
+# The lifespan of a fruit before it drops from the parent plant.
+# Unit: Seconds (s)
+PLANT_FRUIT_LIFESPAN_SECONDS = 604800.0 # (7 Days)
+
+# The maximum density of flowers on a canopy, to prevent visual clutter and unrealistic production.
+# Unit: Flowers per square centimeter (flowers/cm^2)
+PLANT_MAX_FLOWERS_PER_CANOPY_AREA = 0.0001
 
 # The energy packed into the seed itself, which becomes the newborn's starting energy.
 # Unit: Joules (J)
@@ -257,7 +272,7 @@ PLANT_SPROUT_RADIUS_CM = 1.0
 # The ideal ratio of core cross-sectional area to canopy area that the plant
 # tries to maintain for structural stability. This is a behavioral target, not a fixed rule.
 # Unit: Unitless ratio (area/area)
-PLANT_IDEAL_CORE_TO_CANOPY_AREA_RATIO = 0.015
+PLANT_IDEAL_CORE_TO_CANOPY_AREA_RATIO = 0.018
 
 # The initial radius of a seedling's structural core right after sprouting.
 # Unit: Centimeters (cm)
@@ -271,13 +286,22 @@ PLANT_RADIUS_TO_HEIGHT_FACTOR = 0.5
 # The characteristic height at which hydraulic stress begins to significantly
 # limit photosynthetic efficiency. At this height, efficiency drops to ~37% (1/e).
 # Unit: Centimeters (cm)
-PLANT_MAX_HYDRAULIC_HEIGHT_CM = 5000.0 # Represents a very tall tree (50 meters)
+PLANT_MAX_HYDRAULIC_HEIGHT_CM = 1000.0 # Represents a very tall tree (50 meters)
 
 # --- Reproduction & Spacing ---
 PLANT_MAX_NEIGHBORS = 5
 PLANT_CROWDED_RADIUS_CM = 30
-PLANT_SEED_SPREAD_RADIUS_CM = 250
-PLANT_REPRODUCTION_ATTEMPTS = 5
+# DEPRECATED: PLANT_SEED_SPREAD_RADIUS_CM = 250
+# DEPRECATED: PLANT_REPRODUCTION_ATTEMPTS = 5
+
+# A base distance that a fruit will always roll, even on flat ground.
+# Unit: Centimeters (cm)
+PLANT_SEED_ROLL_BASE_DISTANCE_CM = 20.0
+
+# A multiplier that determines how much farther a fruit rolls based on the steepness of the terrain.
+# A higher value means slope has a greater effect on dispersal distance.
+# Unit: Unitless
+PLANT_SEED_ROLL_DISTANCE_FACTOR = 5000.0
 
 # --- Root System ---
 PLANT_INITIAL_ROOT_RADIUS_CM = 10.0
@@ -298,7 +322,7 @@ PLANT_SOIL_EFFICIENCY = {"sand": 0.4, "grass": 1.0, "dirt": 0.7}
 # time for senescence. It defines the age at which a plant's metabolic
 # efficiency drops to ~37% (1/e) of its peak. It's a measure of how
 # quickly the plant ages, not a hard limit on how long it can live.
-PLANT_SENESCENCE_TIMESCALE_SECONDS = 315360000.0 # (Represents a characteristic time of 10 years)
+PLANT_SENESCENCE_TIMESCALE_SECONDS = 252288000.0 # (Represents a characteristic time of 10 years)
 
 PLANT_COMPETITION_MASS_FACTOR = 0.001
 

@@ -12,6 +12,30 @@ def lerp_color(c1, c2, t):
     t = max(0, min(1, t))
     return tuple(int(start + (end - start) * t) for start, end in zip(c1, c2))
 
+class ReproductiveOrgan:
+    """A simple data class to represent a flower or a fruit on a plant."""
+    def __init__(self, parent_plant):
+        self.type = "flower" # Can be "flower" or "fruit"
+        self.age = 0 # Age of the organ, in seconds (s)
+        
+        # Position is relative to the parent plant's center, on its canopy
+        angle = random.uniform(0, 2 * math.pi)
+        # Place it somewhere within the canopy, not just at the edge
+        radius = random.uniform(0, parent_plant.radius) 
+        self.relative_x = radius * math.cos(angle)
+        self.relative_y = radius * math.sin(angle)
+        self.world_x = parent_plant.x + self.relative_x
+        self.world_y = parent_plant.y + self.relative_y
+
+    def update(self, time_step):
+        self.age += time_step
+        if self.type == "flower" and self.age > C.PLANT_FLOWER_LIFESPAN_SECONDS:
+            self.type = "fruit"
+            self.age = 0 # Reset age for the fruit stage
+
+    def is_ready_to_drop(self):
+        return self.type == "fruit" and self.age > C.PLANT_FRUIT_LIFESPAN_SECONDS
+
 class Creature:
     def __init__(self, x, y, initial_energy=C.CREATURE_INITIAL_ENERGY):
         self.x = x  # World coordinate, in centimeters (cm)
@@ -52,6 +76,7 @@ class Plant(Creature):
         self.core_radius = 0 # Structural core radius, in centimeters (cm)
         
         self.reproductive_energy_stored = 0.0 # Energy invested in reproductive structures, in Joules (J)
+        self.reproductive_organs = [] # NEW: List to hold flower/fruit objects
         self.competition_factor = 1.0 # DEPRECATED, will be removed later.
         self.competition_update_accumulator = 0.0 # Time since last competition check, in seconds (s)
         self.has_reached_self_sufficiency = False # Has the plant ever had a positive energy balance?
@@ -260,20 +285,34 @@ class Plant(Creature):
             self.life_stage = "mature" # Transition from seedling to mature
             if is_debug_focused: log.log(f"    MILESTONE ({self.id}): Seedling reached self-sufficiency and is now mature!")
 
-        # Mature plants first prioritize storing energy for reproduction.
+        # --- REVISED ENERGY ALLOCATION LOGIC ---
+        # 1. Mature plants invest in creating flowers.
         if self.life_stage == "mature":
             desired_repro_investment = (C.PLANT_REPRODUCTIVE_INVESTMENT_J_PER_HOUR / C.SECONDS_PER_HOUR) * time_step
-            # Can only invest if it doesn't drop below critical energy reserves.
             available_for_repro = max(0, self.energy - C.PLANT_GROWTH_INVESTMENT_ENERGY_RESERVE)
             actual_repro_investment = min(desired_repro_investment, available_for_repro)
 
             if actual_repro_investment > 0:
                 self.energy -= actual_repro_investment
                 self.reproductive_energy_stored += actual_repro_investment
-                if is_debug_focused:
-                    log.log(f"    Allocation (Reproductive): Invested {actual_repro_investment:.4f} J into storage. New ReproEnergy: {self.reproductive_energy_stored:.2f} J.")
+                
+                # Check if we can create new flowers
+                num_new_flowers = int(self.reproductive_energy_stored // C.PLANT_FLOWER_ENERGY_COST)
+                max_flowers = int(canopy_area * C.PLANT_MAX_FLOWERS_PER_CANOPY_AREA)
+                allowed_new_flowers = max(0, max_flowers - len(self.reproductive_organs))
+                num_new_flowers = min(num_new_flowers, allowed_new_flowers)
 
-        # Second, remaining surplus and reserves are allocated to growth.
+                if num_new_flowers > 0:
+                    cost_of_flowers = num_new_flowers * C.PLANT_FLOWER_ENERGY_COST
+                    self.reproductive_energy_stored -= cost_of_flowers
+                    for _ in range(num_new_flowers):
+                        self.reproductive_organs.append(ReproductiveOrgan(self))
+                    if is_debug_focused:
+                        log.log(f"    Allocation (Reproductive): Invested {actual_repro_investment:.4f} J. Stored ReproEnergy: {self.reproductive_energy_stored:.2f} J. Creating {num_new_flowers} new flowers.")
+                elif is_debug_focused:
+                    log.log(f"    Allocation (Reproductive): Invested {actual_repro_investment:.4f} J. Stored ReproEnergy: {self.reproductive_energy_stored:.2f} J. (Max flowers reached or not enough energy for one).")
+
+        # 2. Remaining surplus and reserves are allocated to growth.
         investment_from_reserves = 0
         if self.energy > C.PLANT_GROWTH_INVESTMENT_ENERGY_RESERVE:
             desired_investment = (C.PLANT_GROWTH_INVESTMENT_J_PER_HOUR / C.SECONDS_PER_HOUR) * time_step
@@ -290,15 +329,11 @@ class Plant(Creature):
             else:
                 log.log(f"    Allocation: No surplus energy or reserves to invest in growth.")
 
-        if self.life_stage == "mature" and self.can_reproduce() and not self.is_overcrowded(world.quadtree):
-            if is_debug_focused: log.log(f"    Reproduction Check: Conditions met. Attempting to spawn.")
-            new_plant = self.reproduce(world, world.quadtree)
-            if new_plant:
-                world.add_newborn(new_plant)
-                if is_debug_focused: log.log(f"    Reproduction SUCCESS. ReproEnergy: {self.reproductive_energy_stored:.2f} J.")
+        # NOTE: The old reproduction check is removed from here.
+        # Dispersal is now handled in the main update method based on fruit state.
         
         if growth_energy > 0:
-            # --- NEW: DYNAMIC CORE GROWTH ALLOCATION ---
+            # --- DYNAMIC CORE GROWTH ALLOCATION ---
             # The plant first determines if it needs to invest in its core for stability.
             core_investment = 0
             canopy_root_investment = growth_energy
@@ -381,77 +416,100 @@ class Plant(Creature):
             self._update_seed(world, time_step, is_debug_focused)
         else:  # "seedling" or "mature"
             self._update_growing_plant(world, time_step, is_debug_focused)
-        
+
+        # --- NEW: Update and manage reproductive organs ---
+        if self.is_alive and self.life_stage == "mature":
+            fruits_to_drop = []
+            for organ in self.reproductive_organs:
+                organ.update(time_step)
+                if organ.is_ready_to_drop():
+                    fruits_to_drop.append(organ)
+            
+            if fruits_to_drop:
+                # Check if we have enough provisioning energy for at least one seed
+                if self.energy >= C.PLANT_SEED_PROVISIONING_ENERGY:
+                    for fruit in fruits_to_drop:
+                        # Attempt to disperse a seed for each dropped fruit
+                        # We must re-check energy each time, as we might run out
+                        if self.energy >= C.PLANT_SEED_PROVISIONING_ENERGY:
+                            new_seed = self._disperse_seed(world, fruit, is_debug_focused)
+                            if new_seed:
+                                self.energy -= C.PLANT_SEED_PROVISIONING_ENERGY
+                                world.add_newborn(new_seed)
+                        else:
+                            if is_debug_focused: log.log(f"    REPRODUCTION: Fruit dropped, but not enough energy to provision a seed. Aborting further dispersal.")
+                            break # Stop trying to disperse if we're out of energy
+                        self.reproductive_organs.remove(fruit)
+                elif is_debug_focused:
+                    log.log(f"    REPRODUCTION: Fruits are ready to drop, but plant lacks energy to provision a seed ({self.energy:.2f} < {C.PLANT_SEED_PROVISIONING_ENERGY}).")
+
         if is_debug_focused:
             log.log(f"--- END LOGIC {self.id} --- Final Energy: {self.energy:.2f}")
 
-    def is_overcrowded(self, quadtree):
-        search_area = Rectangle(self.x, self.y, C.PLANT_CROWDED_RADIUS_CM, C.PLANT_CROWDED_RADIUS_CM)
-        neighbors = quadtree.query(search_area, [])
-        return len(neighbors) > C.PLANT_MAX_NEIGHBORS
+    def _disperse_seed(self, world, fruit, is_debug_focused):
+        """
+        Handles the 'fall and roll' physics for a dropped fruit to find a new seed location.
+        This is the core of the new emergent dispersal system.
+        """
+        # 1. Determine starting point and slope
+        start_x, start_y = fruit.world_x, fruit.world_y
+        
+        # Sample elevation at and around the starting point to find the steepest downhill gradient
+        e_center = world.environment.get_elevation(start_x, start_y)
+        e_north = world.environment.get_elevation(start_x, start_y - 10)
+        e_south = world.environment.get_elevation(start_x, start_y + 10)
+        e_east = world.environment.get_elevation(start_x + 10, start_y)
+        e_west = world.environment.get_elevation(start_x - 10, start_y)
+
+        grad_y = e_north - e_south # Positive means downhill is South
+        grad_x = e_west - e_east  # Positive means downhill is East
+
+        # 2. Calculate roll distance and direction
+        magnitude = math.sqrt(grad_x**2 + grad_y**2)
+        roll_distance = C.PLANT_SEED_ROLL_BASE_DISTANCE_CM
+        
+        if magnitude > 0.001: # Avoid division by zero and tiny movements
+            # Roll direction is the inverse of the gradient (downhill)
+            roll_dir_x = grad_x / magnitude
+            roll_dir_y = grad_y / magnitude
+            # Roll distance is proportional to the steepness (magnitude of the gradient)
+            roll_distance += magnitude * C.PLANT_SEED_ROLL_DISTANCE_FACTOR
+        else: # On flat ground, roll in a random direction
+            angle = random.uniform(0, 2 * math.pi)
+            roll_dir_x = math.cos(angle)
+            roll_dir_y = math.sin(angle)
+
+        final_x = start_x + roll_dir_x * roll_distance
+        final_y = start_y + roll_dir_y * roll_distance
+
+        if is_debug_focused:
+            log.log(f"    REPRODUCTION: Fruit dropped from parent {self.id}. Start Pos: ({start_x:.1f}, {start_y:.1f}). Slope: {magnitude:.4f}. Roll Dist: {roll_distance:.1f}cm. Final Pos: ({final_x:.1f}, {final_y:.1f}).")
+
+        # 3. Validate the final location
+        # Check if it's in a valid biome (not water)
+        final_elevation = world.environment.get_elevation(final_x, final_y)
+        if final_elevation < C.TERRAIN_WATER_LEVEL:
+            if is_debug_focused: log.log(f"      - Dispersal FAILED: Seed landed in water.")
+            return None
+
+        # Check if the location is overcrowded by other plants' cores
+        search_area = Rectangle(final_x, final_y, C.PLANT_CORE_PERSONAL_SPACE_FACTOR, C.PLANT_CORE_PERSONAL_SPACE_FACTOR)
+        neighbors = world.quadtree.query(search_area, [])
+        for neighbor in neighbors:
+            if isinstance(neighbor, Plant):
+                dist_sq = (final_x - neighbor.x)**2 + (final_y - neighbor.y)**2
+                if dist_sq < neighbor.get_personal_space_radius()**2:
+                    if is_debug_focused: log.log(f"      - Dispersal FAILED: Seed landed too close to neighbor {neighbor.id}'s core.")
+                    return None
+        
+        # 4. Create the new seed if the location is valid
+        if is_debug_focused: log.log(f"      - Dispersal SUCCESS: Creating new seed.")
+        return Plant(world, final_x, final_y, initial_energy=C.PLANT_SEED_PROVISIONING_ENERGY)
 
     def can_reproduce(self):
-        """
-        Overrides the base Creature method with more complex, realistic conditions for a Plant.
-        A plant can reproduce if it is mature (has enough stored reproductive energy) AND
-        has enough current energy to pay for both the fruit structure and the seed provisioning.
-        """
-        # --- NEW: Must be in the 'mature' life stage to reproduce ---
-        is_biologically_mature = self.life_stage == "mature"
-        has_stored_energy = self.reproductive_energy_stored >= C.PLANT_REPRODUCTION_MINIMUM_STORED_ENERGY
-        total_current_cost = C.PLANT_FRUIT_STRUCTURAL_ENERGY_COST + C.PLANT_SEED_PROVISIONING_ENERGY
-        has_enough_energy = self.energy >= total_current_cost
-        return is_biologically_mature and has_stored_energy and has_enough_energy
-
-    def reproduce(self, world, quadtree):
-        """
-        Overrides the base Creature method. Finds a valid spawn location and creates a new Plant
-        with a specific provision of energy transferred from the parent.
-        This method is heavily optimized to reduce quadtree queries.
-        """
-        is_debug_focused = (world.debug_focused_creature_id == self.id)
-
-        # --- 1. Find a suitable location for the offspring (HIGHLY OPTIMIZED) ---
-        # Step A: Perform ONE query to get all potential neighbors in the entire seed spread area.
-        search_area = Rectangle(self.x, self.y, C.PLANT_SEED_SPREAD_RADIUS_CM, C.PLANT_SEED_SPREAD_RADIUS_CM)
-        neighbors = [p for p in quadtree.query(search_area, []) if isinstance(p, Plant) and p is not self]
-
-        best_location = None
-        
-        # Step B: Try to find a spot with zero neighbors first. This is the ideal case.
-        for _ in range(C.PLANT_REPRODUCTION_ATTEMPTS):
-            spawn_angle = random.uniform(0, 2 * math.pi)
-            spawn_dist = random.uniform(0, C.PLANT_SEED_SPREAD_RADIUS_CM)
-            candidate_x = self.x + spawn_dist * math.cos(spawn_angle)
-            candidate_y = self.y + spawn_dist * math.sin(spawn_angle)
-
-            is_valid = True
-            for neighbor in neighbors:
-                # Check if the candidate point is inside the neighbor's personal space.
-                # This is the crucial bug fix.
-                dist_sq = (candidate_x - neighbor.x)**2 + (candidate_y - neighbor.y)**2
-                if dist_sq < neighbor.get_personal_space_radius()**2:
-                    is_valid = False
-                    break # Collision detected, this candidate is invalid.
-            
-            if is_valid:
-                best_location = (candidate_x, candidate_y)
-                break # Found a perfect spot, no need to search further.
-
-        # --- 2. If a location is found, pay the costs and create the new plant ---
-        if best_location:
-            if is_debug_focused: log.log(f"DEBUG ({self.id}): Found a valid spawn location at ({best_location[0]:.1f}, {best_location[1]:.1f}). Paying costs.")
-            
-            # Pay the dual energy costs
-            self.energy -= (C.PLANT_FRUIT_STRUCTURAL_ENERGY_COST + C.PLANT_SEED_PROVISIONING_ENERGY)
-            self.reproductive_energy_stored -= C.PLANT_REPRODUCTION_MINIMUM_STORED_ENERGY
-            
-            # Create the new plant, transferring the provisioned energy
-            return Plant(world, best_location[0], best_location[1], initial_energy=C.PLANT_SEED_PROVISIONING_ENERGY)
-        
-        # --- 3. If no location is found, no costs are paid ---
-        if is_debug_focused: log.log(f"DEBUG ({self.id}): Failed to find a valid spawn location. No energy was lost.")
-        return None
+        # This method is now effectively deprecated and replaced by the fruit-dropping mechanism.
+        # It can be removed or left for future animal-specific logic.
+        return False
 
     def calculate_environment_efficiency(self, temperature, humidity):
         temp_diff = abs(temperature - self.genes.optimal_temperature)
@@ -461,10 +519,13 @@ class Plant(Creature):
         return temp_eff * hum_eff
 
     def draw(self, screen, camera):
+        screen_pos = camera.world_to_screen(self.x, self.y)
+
         if self.life_stage == "seed":
+            # Draw a small, visible marker for seeds
+            pygame.draw.circle(screen, C.COLOR_PLANT_SEED, screen_pos, 2)
             return
 
-        screen_pos = camera.world_to_screen(self.x, self.y)
         canopy_radius = camera.scale(self.radius)
         if canopy_radius >= 1:
             canopy_surface = pygame.Surface((canopy_radius * 2, canopy_radius * 2), pygame.SRCALPHA)
@@ -475,6 +536,13 @@ class Plant(Creature):
         core_radius = camera.scale(self.core_radius)
         if core_radius >= 1:
             pygame.draw.circle(screen, C.COLOR_PLANT_CORE, screen_pos, core_radius)
+            
+        # --- NEW: Draw flowers and fruits ---
+        for organ in self.reproductive_organs:
+            organ_pos = camera.world_to_screen(self.x + organ.relative_x, self.y + organ.relative_y)
+            organ_radius = 2 # Fixed pixel size for visibility
+            color = C.COLOR_PLANT_FLOWER if organ.type == "flower" else C.COLOR_PLANT_FRUIT
+            pygame.draw.circle(screen, color, organ_pos, organ_radius)
 
 class Animal(Creature):
     def __init__(self, x, y):
