@@ -113,9 +113,11 @@ class Plant(Creature):
 
     def _update_seed(self, world, time_step, is_debug_focused):
         """Logic for when the plant is a dormant seed."""
+        pm = world.plant_manager
         # --- 1. Dormancy Metabolism ---
         dormancy_cost = (C.PLANT_DORMANCY_METABOLISM_J_PER_HOUR / C.SECONDS_PER_HOUR) * time_step
         self.energy -= dormancy_cost
+        pm.energies[self.index] = self.energy
 
         if self.energy <= 0:
             if is_debug_focused: log.log(f"DEBUG ({self.id}): Seed ran out of energy.")
@@ -129,6 +131,7 @@ class Plant(Creature):
         if temp_ok and humidity_ok:
             if self.energy >= C.PLANT_SPROUTING_ENERGY_COST:
                 self.energy -= C.PLANT_SPROUTING_ENERGY_COST
+                pm.energies[self.index] = self.energy
                 self.life_stage = "seedling"
                 self.radius = C.PLANT_SPROUT_RADIUS_CM
                 self.root_radius = C.PLANT_SPROUT_RADIUS_CM
@@ -261,6 +264,7 @@ class Plant(Creature):
             net_energy_production = 0
 
         self.energy += net_energy_production
+        world.plant_manager.energies[self.index] = self.energy
 
         if is_debug_focused:
             log.log(f"    Efficiencies: Env={self.environment_eff:.3f}, Soil={soil_eff:.3f}, Aging={aging_efficiency:.3f}, Hydraulic={hydraulic_efficiency:.3f}")
@@ -284,8 +288,11 @@ class Plant(Creature):
             actual_repro_investment = min(desired_repro_investment, available_for_repro)
 
             if actual_repro_investment > 0:
+                pm = world.plant_manager
                 self.energy -= actual_repro_investment
+                pm.energies[self.index] = self.energy
                 self.reproductive_energy_stored += actual_repro_investment
+                pm.reproductive_energies_stored[self.index] = self.reproductive_energy_stored
                 
                 # Check if we can create new flowers
                 num_new_flowers = int(self.reproductive_energy_stored // C.PLANT_FLOWER_ENERGY_COST)
@@ -296,6 +303,7 @@ class Plant(Creature):
                 if num_new_flowers > 0:
                     cost_of_flowers = num_new_flowers * C.PLANT_FLOWER_ENERGY_COST
                     self.reproductive_energy_stored -= cost_of_flowers
+                    pm.reproductive_energies_stored[self.index] = self.reproductive_energy_stored
                     for _ in range(num_new_flowers):
                         self.reproductive_organs.append(ReproductiveOrgan(self))
                     if is_debug_focused:
@@ -310,6 +318,7 @@ class Plant(Creature):
             available_from_reserves = self.energy - C.PLANT_GROWTH_INVESTMENT_ENERGY_RESERVE
             investment_from_reserves = min(desired_investment, available_from_reserves)
             self.energy -= investment_from_reserves
+            world.plant_manager.energies[self.index] = self.energy
 
         # The energy available for growth is the net production plus any amount taken from reserves.
         growth_energy = max(0, net_energy_production) + investment_from_reserves
@@ -450,6 +459,7 @@ class Plant(Creature):
                             new_seed = self._disperse_seed(world, fruit, is_debug_focused)
                             if new_seed:
                                 self.energy -= C.PLANT_SEED_PROVISIONING_ENERGY
+                                world.plant_manager.energies[self.index] = self.energy
                                 world.add_newborn(new_seed)
                         else:
                             if is_debug_focused: log.log(f"    REPRODUCTION: Fruit dropped, but not enough energy to provision a seed. Aborting further dispersal.")

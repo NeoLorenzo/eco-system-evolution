@@ -23,6 +23,8 @@ class PlantManager:
         self.radii = np.zeros(initial_capacity, dtype=np.float32)
         self.root_radii = np.zeros(initial_capacity, dtype=np.float32)
         self.core_radii = np.zeros(initial_capacity, dtype=np.float32)
+        self.energies = np.zeros(initial_capacity, dtype=np.float64)
+        self.reproductive_energies_stored = np.zeros(initial_capacity, dtype=np.float64)
 
         self.aging_efficiencies = np.ones(initial_capacity, dtype=np.float32)
         self.hydraulic_efficiencies = np.ones(initial_capacity, dtype=np.float32)
@@ -45,6 +47,8 @@ class PlantManager:
         self.radii[self.count] = plant.radius
         self.root_radii[self.count] = plant.root_radius
         self.core_radii[self.count] = plant.core_radius
+        self.energies[self.count] = plant.energy
+        self.reproductive_energies_stored[self.count] = plant.reproductive_energy_stored
 
         # Increment the count of living plants.
         self.count += 1
@@ -62,6 +66,8 @@ class PlantManager:
         self.radii = np.resize(self.radii, new_capacity)
         self.root_radii = np.resize(self.root_radii, new_capacity)
         self.core_radii = np.resize(self.core_radii, new_capacity)
+        self.energies = np.resize(self.energies, new_capacity)
+        self.reproductive_energies_stored = np.resize(self.reproductive_energies_stored, new_capacity)
         self.aging_efficiencies = np.resize(self.aging_efficiencies, new_capacity)
         self.hydraulic_efficiencies = np.resize(self.hydraulic_efficiencies, new_capacity)
         
