@@ -163,7 +163,7 @@ class Plant(Creature):
         if is_debug_focused:
             log.log(f" State ({self.life_stage}): Energy={self.energy:.2f}, ReproEnergy={self.reproductive_energy_stored:.2f}, Radius={self.radius:.2f}, Height={self.height:.2f}")
 
-        # --- CORE BIOLOGY LOGIC (Calculations now use time_step directly) ---
+# --- CORE BIOLOGY LOGIC (Calculations now use time_step directly) ---
         self.competition_update_accumulator += time_step
         if self.competition_update_accumulator >= C.PLANT_COMPETITION_UPDATE_INTERVAL_SECONDS:
             if is_debug_focused: log.log(f"DEBUG ({self.id}): Recalculating physical competition.")
@@ -173,19 +173,29 @@ class Plant(Creature):
         canopy_area = math.pi * self.radius**2
         root_area = math.pi * self.root_radius**2
 
+        if is_debug_focused:
+            shade_percent = (self.shaded_canopy_area / canopy_area * 100) if canopy_area > 0 else 0
+            root_overlap_percent = (self.overlapped_root_area / root_area * 100) if root_area > 0 else 0
+            log.log(f"    Competition: Shaded Area={self.shaded_canopy_area:.2f} ({shade_percent:.1f}%), Root Overlap={self.overlapped_root_area:.2f} ({root_overlap_percent:.1f}%)")
+
         # --- NEW: Calculate root competition efficiency ---
         effective_root_area = max(0, root_area - self.overlapped_root_area)
         root_competition_eff = effective_root_area / root_area if root_area > 0 else 0
 
         max_soil_eff = self.genes.soil_efficiency.get(self.soil_type, 0)
         root_to_canopy_ratio = self.root_radius / (self.radius + 1)
-        # --- CHANGE: Soil efficiency is now penalized by root competition ---
+                # --- CHANGE: Soil efficiency is now penalized by root competition ---
         soil_eff = max_soil_eff * min(1.0, root_to_canopy_ratio * C.PLANT_ROOT_EFFICIENCY_FACTOR) * root_competition_eff
         aging_efficiency = math.exp(-(self.age / C.PLANT_SENESCENCE_TIMESCALE_SECONDS))
         # --- NEW: Calculate hydraulic efficiency based on height ---
         hydraulic_efficiency = math.exp(-(self.height / C.PLANT_MAX_HYDRAULIC_HEIGHT_CM))
         
         effective_canopy_area = max(0, canopy_area - self.shaded_canopy_area)
+        
+        if is_debug_focused:
+            log.log(f"    Energy Calc: Effective Canopy={effective_canopy_area:.2f} (Total: {canopy_area:.2f})")
+            log.log(f"    Efficiencies: Env={self.environment_eff:.3f}, Soil={soil_eff:.3f} (Root Comp Eff: {root_competition_eff:.3f}), Aging={aging_efficiency:.3f}, Hydraulic={hydraulic_efficiency:.3f}")
+
         photosynthesis_gain = effective_canopy_area * C.PLANT_PHOTOSYNTHESIS_PER_AREA * self.environment_eff * soil_eff * aging_efficiency * hydraulic_efficiency * time_step 
         
         temp_difference = self.temperature - C.PLANT_RESPIRATION_REFERENCE_TEMP
@@ -266,6 +276,7 @@ class Plant(Creature):
                     core_investment = growth_energy * structural_priority
                     canopy_root_investment = growth_energy - core_investment
                     if is_debug_focused:
+                        log.log(f"    Allocation (Structural): Core/Canopy Ratio={current_ratio:.4f} (Ideal: {C.PLANT_IDEAL_CORE_TO_CANOPY_AREA_RATIO:.4f}), Deficit={deficit:.4f}")
                         log.log(f"    Allocation (Structural): Priority={structural_priority:.2f}. Investing {core_investment:.4f} J in Core, {canopy_root_investment:.4f} J in Canopy/Roots.")
 
             total_limitation = self.environment_eff + soil_eff
@@ -306,6 +317,8 @@ class Plant(Creature):
                         
                         if neighbor.radius < self.core_radius:
                             dist_sq = (self.x - neighbor.x)**2 + (self.y - neighbor.y)**2
+                            if is_debug_focused:
+                                log.log(f"      - Crush Check: vs Neighbor {neighbor.id}. Dist^2={dist_sq:.2f}, My Core Radius^2={self.core_radius**2:.2f}")
                             if dist_sq < self.core_radius**2:
                                 neighbor_is_debug_focused = (world.debug_focused_creature_id == neighbor.id)
                                 if is_debug_focused or neighbor_is_debug_focused:
@@ -388,7 +401,7 @@ class Plant(Creature):
 
         # --- 2. If a location is found, pay the costs and create the new plant ---
         if best_location:
-            if is_debug_focused: log.log(f"DEBUG ({self.id}): Found a valid spawn location. Paying costs.")
+            if is_debug_focused: log.log(f"DEBUG ({self.id}): Found a valid spawn location at ({best_location[0]:.1f}, {best_location[1]:.1f}). Paying costs.")
             
             # Pay the dual energy costs
             self.energy -= (C.PLANT_FRUIT_STRUCTURAL_ENERGY_COST + C.PLANT_SEED_PROVISIONING_ENERGY)
