@@ -243,6 +243,11 @@ PLANT_COMPETITION_SEARCH_RADIUS_CM = 5000.0
 # This is the fixed, discrete time-step for all biological calculations.
 PLANT_LOGIC_UPDATE_INTERVAL_SECONDS = 3600.0 # (1 Hour)
 
+# The efficiency of the self-pruning process. 1.0 means the plant sheds
+# exactly enough biomass to cover its energy deficit for that tick.
+# Unit: Unitless
+PLANT_PRUNING_EFFICIENCY = 1.0
+
 # --- Initial Properties & Size ---
 # The initial radius of a seedling's canopy and roots right after sprouting.
 # Unit: Centimeters (cm)

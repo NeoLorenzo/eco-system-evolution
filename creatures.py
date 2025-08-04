@@ -204,11 +204,51 @@ class Plant(Creature):
         metabolism_cost = (canopy_area + root_area + core_area) * C.PLANT_BASE_MAINTENANCE_RESPIRATION_PER_AREA * respiration_factor * time_step
         
         net_energy_production = photosynthesis_gain - metabolism_cost
+
+        # --- NEW: Self-Pruning Logic ---
+        # If the plant has an energy deficit, it sheds biomass to reduce maintenance costs
+        # instead of just passively starving. This creates an emergent maximum size.
+        if net_energy_production < 0:
+            energy_deficit = abs(net_energy_production)
+            
+            # Calculate the cost to maintain 1 cm^2 of biomass for this tick.
+            maintenance_cost_per_area_tick = C.PLANT_BASE_MAINTENANCE_RESPIRATION_PER_AREA * respiration_factor * time_step
+
+            if maintenance_cost_per_area_tick > 0:
+                # Calculate the total area of biomass that needs to be shed to offset the deficit.
+                area_to_shed = (energy_deficit / maintenance_cost_per_area_tick) * C.PLANT_PRUNING_EFFICIENCY
+                
+                # Shed area proportionally from canopy and roots (non-core biomass).
+                total_sheddable_area = canopy_area + root_area
+                if total_sheddable_area > 0:
+                    canopy_shed_fraction = canopy_area / total_sheddable_area
+                    
+                    shed_canopy_area = area_to_shed * canopy_shed_fraction
+                    shed_root_area = area_to_shed * (1.0 - canopy_shed_fraction)
+
+                    if is_debug_focused:
+                        log.log(f"    PRUNING: Energy deficit of {energy_deficit:.4f} J. Shedding {area_to_shed:.2f} cm^2 of biomass.")
+                        log.log(f"      - Old Radius: {self.radius:.2f} (Area: {canopy_area:.2f}). Shedding {shed_canopy_area:.2f} cm^2.")
+
+                    # Calculate new areas and radii, ensuring they don't go below zero.
+                    new_canopy_area = max(0, canopy_area - shed_canopy_area)
+                    new_root_area = max(0, root_area - shed_root_area)
+                    self.radius = math.sqrt(new_canopy_area / math.pi)
+                    self.root_radius = math.sqrt(new_root_area / math.pi)
+                    self.height = self.radius * C.PLANT_RADIUS_TO_HEIGHT_FACTOR
+
+                    if is_debug_focused:
+                        log.log(f"      - New Radius: {self.radius:.2f} (Area: {new_canopy_area:.2f}).")
+
+            # By pruning, the plant has "paid" its energy deficit for this tick with biomass.
+            # We set net production to zero to prevent a "double penalty" (losing biomass AND stored energy).
+            net_energy_production = 0
+
         self.energy += net_energy_production
 
         if is_debug_focused:
             log.log(f"    Efficiencies: Env={self.environment_eff:.3f}, Soil={soil_eff:.3f}, Aging={aging_efficiency:.3f}, Hydraulic={hydraulic_efficiency:.3f}")
-            log.log(f"    Energy: Gained={photosynthesis_gain:.4f}, Lost={metabolism_cost:.4f}, Net={net_energy_production:.4f}")
+            log.log(f"    Energy: Gained={photosynthesis_gain:.4f}, Lost={metabolism_cost:.4f}, Net (Post-Pruning)={net_energy_production:.4f}")
 
         if self.energy <= 0:
             self.die(world, "starvation")
@@ -220,7 +260,6 @@ class Plant(Creature):
             self.life_stage = "mature" # Transition from seedling to mature
             if is_debug_focused: log.log(f"    MILESTONE ({self.id}): Seedling reached self-sufficiency and is now mature!")
 
-        # --- NEW: REVISED ENERGY ALLOCATION LOGIC ---
         # Mature plants first prioritize storing energy for reproduction.
         if self.life_stage == "mature":
             desired_repro_investment = (C.PLANT_REPRODUCTIVE_INVESTMENT_J_PER_HOUR / C.SECONDS_PER_HOUR) * time_step
@@ -317,8 +356,8 @@ class Plant(Creature):
                         
                         if neighbor.radius < self.core_radius:
                             dist_sq = (self.x - neighbor.x)**2 + (self.y - neighbor.y)**2
-                            if is_debug_focused:
-                                log.log(f"      - Crush Check: vs Neighbor {neighbor.id}. Dist^2={dist_sq:.2f}, My Core Radius^2={self.core_radius**2:.2f}")
+                            #if is_debug_focused:
+                                #log.log(f"      - Crush Check: vs Neighbor {neighbor.id}. Dist^2={dist_sq:.2f}, My Core Radius^2={self.core_radius**2:.2f}")
                             if dist_sq < self.core_radius**2:
                                 neighbor_is_debug_focused = (world.debug_focused_creature_id == neighbor.id)
                                 if is_debug_focused or neighbor_is_debug_focused:
