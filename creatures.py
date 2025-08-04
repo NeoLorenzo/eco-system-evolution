@@ -75,6 +75,10 @@ class Plant(Creature):
         self.root_radius = 0 # Root system radius, in centimeters (cm)
         self.core_radius = 0 # Structural core radius, in centimeters (cm)
         
+        # --- NEW: Dynamic Morphology ---
+        # Each plant has its own shape factor, which it adapts based on shade.
+        self.radius_to_height_factor = C.PLANT_RADIUS_TO_HEIGHT_FACTOR
+
         self.reproductive_energy_stored = 0.0 # Energy invested in reproductive structures, in Joules (J)
         self.reproductive_organs = [] # NEW: List to hold flower/fruit objects
         self.competition_factor = 1.0 # DEPRECATED, will be removed later.
@@ -177,7 +181,7 @@ class Plant(Creature):
                 self.radius = C.PLANT_SPROUT_RADIUS_CM
                 self.root_radius = C.PLANT_SPROUT_RADIUS_CM
                 self.core_radius = C.PLANT_SPROUT_CORE_RADIUS_CM
-                self.height = self.radius * C.PLANT_RADIUS_TO_HEIGHT_FACTOR
+                self.height = self.radius * self.radius_to_height_factor # Use instance variable
             elif is_debug_focused:
                 log.log(f"DEBUG ({self.id}): Conditions met to sprout, but not enough energy ({self.energy:.2f} < {C.PLANT_SPROUTING_ENERGY_COST}).")
         elif is_debug_focused:
@@ -198,10 +202,22 @@ class Plant(Creature):
         canopy_area = math.pi * self.radius**2
         root_area = math.pi * self.root_radius**2
 
+        shade_ratio = (self.shaded_canopy_area / canopy_area) if canopy_area > 0 else 0
+
         if is_debug_focused:
-            shade_percent = (self.shaded_canopy_area / canopy_area * 100) if canopy_area > 0 else 0
             root_overlap_percent = (self.overlapped_root_area / root_area * 100) if root_area > 0 else 0
-            log.log(f"    Competition: Shaded Area={self.shaded_canopy_area:.2f} ({shade_percent:.1f}%), Root Overlap={self.overlapped_root_area:.2f} ({root_overlap_percent:.1f}%)")
+            log.log(f"    Competition: Shaded Area={self.shaded_canopy_area:.2f} ({shade_ratio*100:.1f}%), Root Overlap={self.overlapped_root_area:.2f} ({root_overlap_percent:.1f}%)")
+
+        # --- NEW: Shade Avoidance Response (Dynamic Morphology) ---
+        # The plant adjusts its shape based on how much shade it's in.
+        # It interpolates between its base shape and its max "skinny" shape.
+        target_factor = C.PLANT_RADIUS_TO_HEIGHT_FACTOR + (C.PLANT_MAX_SHADE_RADIUS_TO_HEIGHT_FACTOR - C.PLANT_RADIUS_TO_HEIGHT_FACTOR) * shade_ratio
+        
+        # Slowly move the current factor towards the target factor.
+        self.radius_to_height_factor += (target_factor - self.radius_to_height_factor) * C.PLANT_MORPHOLOGY_ADAPTATION_RATE
+        
+        if is_debug_focused and abs(target_factor - self.radius_to_height_factor) > 0.01:
+            log.log(f"    Morphology: Shade Ratio={shade_ratio:.2f}. Adjusting R/H Factor from {self.radius_to_height_factor:.2f} towards {target_factor:.2f}.")
 
         # --- NEW: Calculate root competition efficiency ---
         effective_root_area = max(0, root_area - self.overlapped_root_area)
@@ -260,7 +276,7 @@ class Plant(Creature):
                     new_root_area = max(0, root_area - shed_root_area)
                     self.radius = math.sqrt(new_canopy_area / math.pi)
                     self.root_radius = math.sqrt(new_root_area / math.pi)
-                    self.height = self.radius * C.PLANT_RADIUS_TO_HEIGHT_FACTOR
+                    self.height = self.radius * self.radius_to_height_factor # Use instance variable
 
                     if is_debug_focused:
                         log.log(f"      - New Radius: {self.radius:.2f} (Area: {new_canopy_area:.2f}).")
@@ -376,7 +392,7 @@ class Plant(Creature):
                     self.radius = math.sqrt(new_canopy_area / math.pi)
                     new_root_area = root_area + added_root_area
                     self.root_radius = math.sqrt(new_root_area / math.pi)
-                    self.height = self.radius * C.PLANT_RADIUS_TO_HEIGHT_FACTOR
+                    self.height = self.radius * self.radius_to_height_factor # Use instance variable
                 
                 if is_debug_focused:
                     log.log(f"      - Growth: New Radius={self.radius:.2f}, New Core Radius={self.core_radius:.2f}")

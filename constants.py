@@ -278,10 +278,20 @@ PLANT_IDEAL_CORE_TO_CANOPY_AREA_RATIO = 0.1
 # Unit: Centimeters (cm)
 PLANT_SPROUT_CORE_RADIUS_CM = 0.2
 
-# Height is now an emergent property of the plant's radius, not a direct investment.
-# This factor determines how tall a plant is relative to its width.
+# This now represents the BASE or "genetically ideal" shape of the plant in open sunlight.
+# A low value means a wide, sprawling plant (like an oak).
 # Unit: Unitless ratio
-PLANT_RADIUS_TO_HEIGHT_FACTOR = 0.5
+PLANT_RADIUS_TO_HEIGHT_FACTOR = 2.0
+
+# The target shape a plant will strive for when completely shaded.
+# A high value means a tall, skinny plant (like a pine in a dense forest).
+# Unit: Unitless ratio
+PLANT_MAX_SHADE_RADIUS_TO_HEIGHT_FACTOR = 2.5
+
+# The rate at which a plant adjusts its morphology in response to changing light conditions.
+# A higher value means it adapts its shape faster.
+# Unit: Unitless
+PLANT_MORPHOLOGY_ADAPTATION_RATE = 0.01
 
 # The characteristic height at which hydraulic stress begins to significantly
 # limit photosynthetic efficiency. At this height, efficiency drops to ~37% (1/e).
