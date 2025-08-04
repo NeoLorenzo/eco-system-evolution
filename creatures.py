@@ -105,7 +105,7 @@ class Plant(Creature):
 
         # --- OPTIMIZATION: Query for neighbors only ONCE ---
         # The search radius for canopy and root competition is the same, so we can reuse the result.
-        search_area = Rectangle(self.x, self.y, C.PLANT_SEED_SPREAD_RADIUS_CM, C.PLANT_SEED_SPREAD_RADIUS_CM)
+        search_area = Rectangle(self.x, self.y, C.PLANT_COMPETITION_SEARCH_RADIUS_CM, C.PLANT_COMPETITION_SEARCH_RADIUS_CM)
         neighbors = quadtree.query(search_area, [])
 
         for neighbor in neighbors:
