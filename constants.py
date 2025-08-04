@@ -21,7 +21,12 @@ SECONDS_PER_MINUTE = 60
 WORLD_WIDTH_CM = 100000
 WORLD_HEIGHT_CM = 100000
 TIME_MULTIPLIERS = {
-    0: 1.0, 1: 60.0, 2: 3600.0, 3: 86400.0, 4: 31536000.0
+    0: 1.0, # 1 sec/sec
+    1: 60.0, # 1 min/sec
+    2: 3600.0, # 1 hour/sec
+    3: 86400.0, # 1 day/sec
+    4: 604800.0, # 1 week/sec
+    5: 2592000.0 # 1 month (30 days)/sec
 }
 CHUNK_SIZE_CM = 4000
 CHUNK_RESOLUTION = 100

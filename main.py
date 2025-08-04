@@ -28,7 +28,7 @@ def run_simulation():
     world.pre_generate_all_chunks(screen, font)
 
     logger.log("Starting main simulation loop...")
-    logger.log("CONTROLS: [SPACE] to Pause, [0-4] to set Speed, [V] to cycle Views.")
+    logger.log("CONTROLS: [SPACE] to Pause, [0-5] to set Speed, [V] to cycle Views.")
     
     running = True
     while running:
@@ -52,6 +52,7 @@ def run_simulation():
                 if event.key == pygame.K_2: world.time_manager.set_speed(2)
                 if event.key == pygame.K_3: world.time_manager.set_speed(3)
                 if event.key == pygame.K_4: world.time_manager.set_speed(4)
+                if event.key == pygame.K_5: world.time_manager.set_speed(5)
 
         keys = pygame.key.get_pressed()
         if keys[pygame.K_LEFT]: world.camera.pan(-C.CAMERA_PANSPEED_PIXELS, 0)
