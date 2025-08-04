@@ -147,13 +147,17 @@ PLANT_Q10_INTERVAL_DIVISOR = 0.2
 
 # --- Biomass Cost (Growth Cost) ---
 # Calculation: Energy Density of Biomass * Mass per Area of Growth
-# This now represents the cost to grow a 2D area, primarily for the root system.
+# This now represents the cost to grow a 2D area of "cheap" tissue like roots and leaves.
 # Units: (J/kg) * (kg/m^2) / (cm^2/m^2) = J/cm^2
 PLANT_BIOMASS_ENERGY_COST = (BIOMASS_ENERGY_DENSITY_J_PER_KG * LEAF_MASS_PER_AREA_KG_PER_M2) / CM2_PER_M2
 
-# This represents the cost to grow a 3D volume of canopy. We assume a density to convert the area cost to a volume cost.
-# Unit: J/cm^3
-PLANT_CANOPY_BIOMASS_ENERGY_COST = PLANT_BIOMASS_ENERGY_COST # For now, we assume a 1cm thickness for cost conversion.
+# A multiplier to define how much more expensive structural core tissue is compared to standard biomass.
+# Unit: Unitless
+PLANT_CORE_COST_MULTIPLIER = 8.0
+
+# The energy cost to create 1 cm^2 of dense, structural core tissue, derived from the base cost.
+# Unit: J/cm^2
+PLANT_CORE_BIOMASS_ENERGY_COST = PLANT_BIOMASS_ENERGY_COST * PLANT_CORE_COST_MULTIPLIER
 
 # =============================================================================
 # --- CREATURES (GENERAL) ---
@@ -201,9 +205,10 @@ GERMINATION_MAX_TEMP = 0.85
 
 
 # --- Reproduction & Maturity ---
-# The proportion of surplus energy a plant invests in its reproductive structures.
-# Unit: Unitless ratio [0, 1]
-PLANT_REPRODUCTIVE_INVESTMENT_RATIO = 0.25
+# The rate at which a mature plant will attempt to store energy for reproduction,
+# drawing from its main reserves if necessary.
+# Unit: Joules per Hour (J/h)
+PLANT_REPRODUCTIVE_INVESTMENT_J_PER_HOUR = 250.0
 
 # The amount of stored reproductive energy required before a plant is mature enough to fruit.
 # Unit: Joules (J)
@@ -252,6 +257,11 @@ PLANT_SPROUT_CORE_RADIUS_CM = 0.2
 # This factor determines how tall a plant is relative to its width.
 # Unit: Unitless ratio
 PLANT_RADIUS_TO_HEIGHT_FACTOR = 0.5
+
+# The characteristic height at which hydraulic stress begins to significantly
+# limit photosynthetic efficiency. At this height, efficiency drops to ~37% (1/e).
+# Unit: Centimeters (cm)
+PLANT_MAX_HYDRAULIC_HEIGHT_CM = 5000.0 # Represents a very tall tree (50 meters)
 
 # --- Reproduction & Spacing ---
 PLANT_MAX_NEIGHBORS = 5

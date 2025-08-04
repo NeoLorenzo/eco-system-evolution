@@ -182,9 +182,11 @@ class Plant(Creature):
         # --- CHANGE: Soil efficiency is now penalized by root competition ---
         soil_eff = max_soil_eff * min(1.0, root_to_canopy_ratio * C.PLANT_ROOT_EFFICIENCY_FACTOR) * root_competition_eff
         aging_efficiency = math.exp(-(self.age / C.PLANT_SENESCENCE_TIMESCALE_SECONDS))
+        # --- NEW: Calculate hydraulic efficiency based on height ---
+        hydraulic_efficiency = math.exp(-(self.height / C.PLANT_MAX_HYDRAULIC_HEIGHT_CM))
         
         effective_canopy_area = max(0, canopy_area - self.shaded_canopy_area)
-        photosynthesis_gain = effective_canopy_area * C.PLANT_PHOTOSYNTHESIS_PER_AREA * self.environment_eff * soil_eff * aging_efficiency * time_step 
+        photosynthesis_gain = effective_canopy_area * C.PLANT_PHOTOSYNTHESIS_PER_AREA * self.environment_eff * soil_eff * aging_efficiency * hydraulic_efficiency * time_step 
         
         temp_difference = self.temperature - C.PLANT_RESPIRATION_REFERENCE_TEMP
         respiration_factor = C.PLANT_Q10_FACTOR ** (temp_difference / C.PLANT_Q10_INTERVAL_DIVISOR)
@@ -195,7 +197,7 @@ class Plant(Creature):
         self.energy += net_energy_production
 
         if is_debug_focused:
-            log.log(f"    Efficiencies: Env={self.environment_eff:.3f}, Soil={soil_eff:.3f}, Aging={aging_efficiency:.3f}")
+            log.log(f"    Efficiencies: Env={self.environment_eff:.3f}, Soil={soil_eff:.3f}, Aging={aging_efficiency:.3f}, Hydraulic={hydraulic_efficiency:.3f}")
             log.log(f"    Energy: Gained={photosynthesis_gain:.4f}, Lost={metabolism_cost:.4f}, Net={net_energy_production:.4f}")
 
         if self.energy <= 0:
@@ -208,6 +210,21 @@ class Plant(Creature):
             self.life_stage = "mature" # Transition from seedling to mature
             if is_debug_focused: log.log(f"    MILESTONE ({self.id}): Seedling reached self-sufficiency and is now mature!")
 
+        # --- NEW: REVISED ENERGY ALLOCATION LOGIC ---
+        # Mature plants first prioritize storing energy for reproduction.
+        if self.life_stage == "mature":
+            desired_repro_investment = (C.PLANT_REPRODUCTIVE_INVESTMENT_J_PER_HOUR / C.SECONDS_PER_HOUR) * time_step
+            # Can only invest if it doesn't drop below critical energy reserves.
+            available_for_repro = max(0, self.energy - C.PLANT_GROWTH_INVESTMENT_ENERGY_RESERVE)
+            actual_repro_investment = min(desired_repro_investment, available_for_repro)
+
+            if actual_repro_investment > 0:
+                self.energy -= actual_repro_investment
+                self.reproductive_energy_stored += actual_repro_investment
+                if is_debug_focused:
+                    log.log(f"    Allocation (Reproductive): Invested {actual_repro_investment:.4f} J into storage. New ReproEnergy: {self.reproductive_energy_stored:.2f} J.")
+
+        # Second, remaining surplus and reserves are allocated to growth.
         investment_from_reserves = 0
         if self.energy > C.PLANT_GROWTH_INVESTMENT_ENERGY_RESERVE:
             desired_investment = (C.PLANT_GROWTH_INVESTMENT_J_PER_HOUR / C.SECONDS_PER_HOUR) * time_step
@@ -215,21 +232,14 @@ class Plant(Creature):
             investment_from_reserves = min(desired_investment, available_from_reserves)
             self.energy -= investment_from_reserves
 
-        total_allocatable_energy = net_energy_production + investment_from_reserves
-        growth_energy = 0
+        # The energy available for growth is the net production plus any amount taken from reserves.
+        growth_energy = max(0, net_energy_production) + investment_from_reserves
 
-        if total_allocatable_energy > 0:
-            # Only mature plants invest in reproduction
-            if self.life_stage == "mature":
-                reproductive_investment = total_allocatable_energy * C.PLANT_REPRODUCTIVE_INVESTMENT_RATIO
-                self.reproductive_energy_stored += reproductive_investment
-                growth_energy = total_allocatable_energy * (1 - C.PLANT_REPRODUCTIVE_INVESTMENT_RATIO)
-                if is_debug_focused: log.log(f"    Allocation: Total pool {total_allocatable_energy:.4f} J -> {reproductive_investment:.4f} J to repro, {growth_energy:.4f} J to growth.")
-            else: # Seedlings put everything into growth
-                growth_energy = total_allocatable_energy
-                if is_debug_focused: log.log(f"    Allocation (Seedling): Total pool {total_allocatable_energy:.4f} J -> All to growth.")
-        elif is_debug_focused:
-            log.log(f"    Allocation: No surplus energy or reserves to invest.")
+        if is_debug_focused:
+            if growth_energy > 0:
+                log.log(f"    Allocation (Growth): Total pool {growth_energy:.4f} J available for growth.")
+            else:
+                log.log(f"    Allocation: No surplus energy or reserves to invest in growth.")
 
         if self.life_stage == "mature" and self.can_reproduce() and not self.is_overcrowded(world.quadtree):
             if is_debug_focused: log.log(f"    Reproduction Check: Conditions met. Attempting to spawn.")
@@ -264,7 +274,8 @@ class Plant(Creature):
 
                 # 1. Grow the Core
                 if core_investment > 0:
-                    added_core_area = core_investment / C.PLANT_BIOMASS_ENERGY_COST
+                    # --- CHANGE: Use the new, more expensive constant for core growth ---
+                    added_core_area = core_investment / C.PLANT_CORE_BIOMASS_ENERGY_COST
                     new_core_area = (math.pi * self.core_radius**2) + added_core_area
                     self.core_radius = math.sqrt(new_core_area / math.pi)
 
