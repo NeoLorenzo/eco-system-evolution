@@ -101,7 +101,14 @@ class PlantManager:
     def remove_plant(self, plant_to_remove):
         """
         Removes a plant efficiently using the 'swap and pop' method.
-        This ensures data integrity between the object list and NumPy arrays.
+        
+        !!! CRITICAL CHECKLIST FOR FUTURE MODIFICATIONS !!!
+        If you add a new NumPy array to this class, you MUST add it
+        to the swap block below to prevent data corruption.
+        Current arrays to swap:
+        - ages, heights, radii, root_radii, core_radii, energies,
+        - reproductive_energies_stored, positions, aging_efficiencies,
+        - hydraulic_efficiencies
         """
         # Ensure the plant is actually in our list and its index is valid. This is a safeguard.
         if plant_to_remove.index >= self.count or self.plants[plant_to_remove.index] is not plant_to_remove:

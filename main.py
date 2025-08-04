@@ -12,7 +12,7 @@ def initialize_simulation():
     logger.log("Attempting to initialize Pygame...")
     pygame.init()
     logger.log("Pygame initialized successfully.")
-    logger.log(f"Creating display surface with width: {C.SCREEN_WIDTH} and height: {C.SCREEN_HEIGHT}") # <--- CHANGE THIS
+    logger.log(f"Creating display surface with width: {C.SCREEN_WIDTH} and height: {C.SCREEN_HEIGHT}")
     screen = pygame.display.set_mode((C.SCREEN_WIDTH, C.SCREEN_HEIGHT))
     pygame.display.set_caption("Eco-System Evolution")
     font = pygame.font.Font(None, C.UI_FONT_SIZE)
