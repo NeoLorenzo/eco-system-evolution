@@ -272,7 +272,7 @@ PLANT_SPROUT_RADIUS_CM = 1.0
 # The ideal ratio of core cross-sectional area to canopy area that the plant
 # tries to maintain for structural stability. This is a behavioral target, not a fixed rule.
 # Unit: Unitless ratio (area/area)
-PLANT_IDEAL_CORE_TO_CANOPY_AREA_RATIO = 0.018
+PLANT_IDEAL_CORE_TO_CANOPY_AREA_RATIO = 0.1
 
 # The initial radius of a seedling's structural core right after sprouting.
 # Unit: Centimeters (cm)

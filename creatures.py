@@ -451,11 +451,72 @@ class Plant(Creature):
         Handles the 'fall and roll' physics for a dropped fruit to find a new seed location.
         This is the core of the new emergent dispersal system.
         """
-        # 1. Determine starting point and slope
-        start_x, start_y = fruit.world_x, fruit.world_y
+        # 1. Determine the starting point of the roll (the "Fall and Bounce" model)
+        # The fruit grew at fruit.world_x/y, but it falls and tumbles to the edge of the canopy.
+        origin_x, origin_y = fruit.world_x, fruit.world_y
+
+        # Vector from parent's center to the fruit's growth spot
+        vec_x = origin_x - self.x
+        vec_y = origin_y - self.y
+        dist_from_center = math.sqrt(vec_x**2 + vec_y**2)
+
+        # Normalize the vector and scale it by the parent's full radius to find the drop point on the circumference
+        if dist_from_center > 0:
+            drop_x = self.x + (vec_x / dist_from_center) * self.radius
+            drop_y = self.y + (vec_y / dist_from_center) * self.radius
+        else: # If fruit grew at the exact center, pick a random edge point
+            angle = random.uniform(0, 2 * math.pi)
+            drop_x = self.x + self.radius * math.cos(angle)
+            drop_y = self.y + self.radius * math.sin(angle)
+
+        # 2. Determine slope at the drop point
+        # Sample elevation at and around the drop point to find the steepest downhill gradient
+        e_center = world.environment.get_elevation(drop_x, drop_y)
+        e_north = world.environment.get_elevation(drop_x, drop_y - 10)
+        e_south = world.environment.get_elevation(drop_x, drop_y + 10)
+        e_east = world.environment.get_elevation(drop_x + 10, drop_y)
+        e_west = world.environment.get_elevation(drop_x - 10, drop_y)
+
+        grad_y = e_north - e_south # Positive means downhill is South
+        grad_x = e_west - e_east  # Positive means downhill is East
+
+        # 3. Calculate roll distance and direction
+        magnitude = math.sqrt(grad_x**2 + grad_y**2)
+        roll_distance = C.PLANT_SEED_ROLL_BASE_DISTANCE_CM
         
-        # Sample elevation at and around the starting point to find the steepest downhill gradient
-        e_center = world.environment.get_elevation(start_x, start_y)
+        if magnitude > 0.001: # Avoid division by zero and tiny movements
+            roll_dir_x = grad_x / magnitude
+            roll_dir_y = grad_y / magnitude
+            roll_distance += magnitude * C.PLANT_SEED_ROLL_DISTANCE_FACTOR
+        else: # On flat ground, roll in a random direction
+            angle = random.uniform(0, 2 * math.pi)
+            roll_dir_x = math.cos(angle)
+            roll_dir_y = math.sin(angle)
+
+        final_x = drop_x + roll_dir_x * roll_distance
+        final_y = drop_y + roll_dir_y * roll_distance
+
+        if is_debug_focused:
+            log.log(f"    REPRODUCTION: Fruit dropped from parent {self.id}. Origin: ({origin_x:.1f}, {origin_y:.1f}) -> Drop Point: ({drop_x:.1f}, {drop_y:.1f}). Slope: {magnitude:.4f}. Roll Dist: {roll_distance:.1f}cm. Final Pos: ({final_x:.1f}, {final_y:.1f}).")
+
+        # 4. Validate the final location
+        final_elevation = world.environment.get_elevation(final_x, final_y)
+        if final_elevation < C.TERRAIN_WATER_LEVEL:
+            if is_debug_focused: log.log(f"      - Dispersal FAILED: Seed landed in water.")
+            return None
+
+        search_area = Rectangle(final_x, final_y, C.PLANT_CORE_PERSONAL_SPACE_FACTOR, C.PLANT_CORE_PERSONAL_SPACE_FACTOR)
+        neighbors = world.quadtree.query(search_area, [])
+        for neighbor in neighbors:
+            if isinstance(neighbor, Plant):
+                dist_sq = (final_x - neighbor.x)**2 + (final_y - neighbor.y)**2
+                if dist_sq < neighbor.get_personal_space_radius()**2:
+                    if is_debug_focused: log.log(f"      - Dispersal FAILED: Seed landed too close to neighbor {neighbor.id}'s core.")
+                    return None
+        
+        # 5. Create the new seed if the location is valid
+        if is_debug_focused: log.log(f"      - Dispersal SUCCESS: Creating new seed.")
+        return Plant(world, final_x, final_y, initial_energy=C.PLANT_SEED_PROVISIONING_ENERGY)
         e_north = world.environment.get_elevation(start_x, start_y - 10)
         e_south = world.environment.get_elevation(start_x, start_y + 10)
         e_east = world.environment.get_elevation(start_x + 10, start_y)
