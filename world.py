@@ -9,6 +9,7 @@ from environment import Environment
 from ui import draw_loading_screen
 from quadtree import QuadTree, Rectangle
 from time_manager import TimeManager
+from plant_manager import PlantManager
 import logger as log
 
 class World:
@@ -16,7 +17,7 @@ class World:
         log.log("Creating a new World...")
         self.camera = Camera()
         self.environment = Environment()
-        self.plants = []
+        self.plant_manager = PlantManager()
         self.animals = []
         self.newborns = []
         self.graveyard = []
@@ -119,7 +120,7 @@ class World:
     def populate_world(self):
         log.log("Populating the world with initial creatures...")
         initial_plant = Plant(self, C.INITIAL_PLANT_POSITION[0], C.INITIAL_PLANT_POSITION[1])
-        self.plants.append(initial_plant)
+        self.plant_manager.add_plant(initial_plant) # <--- CHANGE: Use the manager
         self.schedule_plant_update(initial_plant, C.PLANT_LOGIC_UPDATE_INTERVAL_SECONDS)
         # --- CHANGE: Insert into quadtree ONCE at birth ---
         self.quadtree.insert(initial_plant)
@@ -162,10 +163,10 @@ class World:
         Recalculates the largest plant radius in the world.
         This is a simple but robust way to keep the value up-to-date.
         """
-        if not self.plants:
+        if not self.plant_manager: # <--- CHANGE: Use the manager
             self.max_plant_radius = 0.0
         else:
-            self.max_plant_radius = max(p.radius for p in self.plants)
+            self.max_plant_radius = max(p.radius for p in self.plant_manager) # <--- CHANGE: Use the manager
 
     def _populate_competition_grids(self):
         """Pass 1: Populate the light and root grids with data from all plants."""
@@ -256,7 +257,7 @@ class World:
         # --- Housekeeping ---
         for dead_creature in self.graveyard:
             if isinstance(dead_creature, Plant):
-                if dead_creature in self.plants: self.plants.remove(dead_creature)
+                self.plant_manager.remove_plant(dead_creature) # <--- CHANGE: Use the manager
             elif isinstance(dead_creature, Animal):
                 if dead_creature in self.animals: self.animals.remove(dead_creature)
         self.graveyard.clear()
@@ -264,10 +265,9 @@ class World:
         # Process newborns
         for creature in self.newborns:
             if isinstance(creature, Plant):
-                self.plants.append(creature)
+                self.plant_manager.add_plant(creature) # <--- CHANGE: Use the manager
             elif isinstance(creature, Animal):
                 self.animals.append(creature)
-            # Note: The quadtree insertion is now done in add_newborn()
         self.newborns.clear()
 
         # --- Population Statistics Logging & World State Update ---
@@ -348,7 +348,7 @@ class World:
     def draw(self, screen):
         self.environment.draw(screen, self.camera)
         self.camera.draw_world_border(screen)
-        for plant in self.plants:
+        for plant in self.plant_manager: # <--- CHANGE: Use the manager
             plant.draw(screen, self.camera)
         for animal in self.animals:
             animal.draw(screen, self.camera)
@@ -357,7 +357,7 @@ class World:
         """Handles a mouse click, printing a debug report and toggling focused logging."""
         world_x, world_y = self.camera.screen_to_world(screen_pos[0], screen_pos[1])
 
-        for plant in self.plants:
+        for plant in self.plant_manager: # <--- CHANGE: Use the manager
             dist_sq = (world_x - plant.x)**2 + (world_y - plant.y)**2
             if dist_sq <= plant.radius**2:
                 log.log(f"Clicked on a plant at world coordinates ({int(plant.x)}, {int(plant.y)}).")
@@ -377,7 +377,7 @@ class World:
         
         log.log("\n--- Population Statistics ---")
         log.log(f"  > Report for Day {current_day:.1f} (covering the last {log_period_days:.1f} days)")
-        log.log(f"  Living Plants: {len(self.plants):,}")
+        log.log(f"  Living Plants: {len(self.plant_manager):,}") # <--- CHANGE: Use the manager
         log.log(f"  Living Animals: {len(self.animals):,}")
         log.log(f"  - Plant Births this Period: {self.plant_births_this_period:,}")
         log.log(f"  - Plant Deaths this Period: {self.plant_deaths_this_period:,}")
