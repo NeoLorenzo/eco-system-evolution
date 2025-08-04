@@ -173,7 +173,7 @@ class World:
         self.light_grid.fill(0)
         self.root_grid.fill(0)
 
-        for plant in self.plants:
+        for plant in self.plant_manager: # <--- FIX: Use the manager
             if plant.radius <= 0: continue
 
             # --- Rasterize Canopy for Light Grid ---
@@ -208,7 +208,7 @@ class World:
         """Pass 2: Use the populated grids to calculate competition for each plant."""
         cell_area = C.LIGHT_GRID_CELL_SIZE_CM ** 2
 
-        for plant in self.plants:
+        for plant in self.plant_manager: # <--- FIX: Use the manager
             plant.shaded_canopy_area = 0.0
             plant.overlapped_root_area = 0.0
             if plant.radius <= 0: continue
