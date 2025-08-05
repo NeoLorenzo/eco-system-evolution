@@ -344,6 +344,15 @@ PLANT_OPTIMAL_HUMIDITY = 0.6
 PLANT_HUMIDITY_TOLERANCE = 0.3
 PLANT_SOIL_EFFICIENCY = {"sand": 0.4, "grass": 1.0, "dirt": 0.7}
 
+# A mapping from soil type strings to numerical IDs for use in NumPy arrays.
+# This allows for vectorized operations based on soil type.
+PLANT_SOIL_TYPE_TO_ID = {
+    "sand": 0,
+    "grass": 1,
+    "dirt": 2,
+    None: -1 # Represents invalid terrain like water
+}
+
 # time for senescence. It defines the age at which a plant's metabolic
 # efficiency drops to ~37% (1/e) of its peak. It's a measure of how
 # quickly the plant ages, not a hard limit on how long it can live.
