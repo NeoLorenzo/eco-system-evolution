@@ -255,37 +255,6 @@ class Plant(Creature):
         # We return 0 to prevent a "double penalty" (losing biomass AND stored energy).
         return 0
 
-    def _update_growing_plant(self, world, time_step, is_debug_focused):
-        """Unified logic for seedlings and mature plants."""
-        if is_debug_focused:
-            log.log(f" State ({self.life_stage}): Energy={self.energy:.2f}, ReproEnergy={self.reproductive_energy_stored:.2f}, Radius={self.radius:.2f}, Height={self.height:.2f}")
-
-        # --- 1. CORE BIOLOGY: Calculate Net Energy ---
-        net_energy_production, photosynthesis_gain, metabolism_cost, canopy_area, root_area, core_area = self._calculate_energy_balance(world, time_step, is_debug_focused)
-
-        # --- 2. Self-Pruning Logic (Energy Deficit Response) ---
-        if net_energy_production < 0:
-            energy_deficit = abs(net_energy_production)
-            net_energy_production = self._process_self_pruning(energy_deficit, canopy_area, root_area, core_area, world, time_step, is_debug_focused)
-
-        # --- 3. Update Stored Energy & Check for Starvation ---
-        self.energy += net_energy_production
-        world.plant_manager.arrays['energies'][self.index] = self.energy
-
-        if is_debug_focused:
-            log.log(f"    Energy: Gained={photosynthesis_gain:.4f}, Lost={metabolism_cost:.4f}, Net (Post-Pruning)={net_energy_production:.4f}")
-
-        if self.energy <= 0:
-            self.die(world, "starvation")
-            if is_debug_focused: log.log(f"  Plant {self.id} ({self.life_stage}) died from starvation. Final Energy: {self.energy:.2f}")
-            return
-
-        # --- 4. Update Life Stage ---
-        if not self.has_reached_self_sufficiency and net_energy_production > 0:
-            self.has_reached_self_sufficiency = True
-            self.life_stage = "mature"
-            if is_debug_focused: log.log(f"    MILESTONE ({self.id}): Seedling reached self-sufficiency and is now mature!")
-
     def _allocate_surplus_energy(self, net_energy_production, canopy_area, root_area, core_area, world, time_step, is_debug_focused):
         """
         Handles the investment of surplus energy into reproduction and growth.
