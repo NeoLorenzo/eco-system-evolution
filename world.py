@@ -208,19 +208,31 @@ class World:
             current_max_heights = self.light_grid[gx_indices, gy_indices]
             self.light_grid[gx_indices, gy_indices] = np.maximum(current_max_heights, height)
 
-            # --- Rasterize Roots for Root Grid ---
+            # --- Rasterize Roots for Root Grid (Vectorized) ---
             min_gx_root = int(max(0, (x - root_radius) / C.LIGHT_GRID_CELL_SIZE_CM))
             max_gx_root = int(min(self.root_grid.shape[0] - 1, (x + root_radius) / C.LIGHT_GRID_CELL_SIZE_CM))
             min_gy_root = int(max(0, (y - root_radius) / C.LIGHT_GRID_CELL_SIZE_CM))
             max_gy_root = int(min(self.root_grid.shape[1] - 1, (y + root_radius) / C.LIGHT_GRID_CELL_SIZE_CM))
 
-            for gx in range(min_gx_root, max_gx_root + 1):
-                for gy in range(min_gy_root, max_gy_root + 1):
-                    cell_wx = (gx + 0.5) * C.LIGHT_GRID_CELL_SIZE_CM
-                    cell_wy = (gy + 0.5) * C.LIGHT_GRID_CELL_SIZE_CM
-                    dist_sq = (x - cell_wx)**2 + (y - cell_wy)**2
-                    if dist_sq <= root_radius**2:
-                        self.root_grid[gx, gy] += root_radius # Add radius as pressure proxy
+            # Create a grid of coordinates for the bounding box of the roots
+            gx_range_root = np.arange(min_gx_root, max_gx_root + 1)
+            gy_range_root = np.arange(min_gy_root, max_gy_root + 1)
+            gx_grid_root, gy_grid_root = np.meshgrid(gx_range_root, gy_range_root)
+
+            # Calculate the world coordinates of the center of each grid cell
+            cell_wx_root = (gx_grid_root + 0.5) * C.LIGHT_GRID_CELL_SIZE_CM
+            cell_wy_root = (gy_grid_root + 0.5) * C.LIGHT_GRID_CELL_SIZE_CM
+
+            # Find all cells within the plant's root radius
+            dist_sq_root = (x - cell_wx_root)**2 + (y - cell_wy_root)**2
+            cells_inside_roots_mask = dist_sq_root <= root_radius**2
+
+            # Get the grid indices where the condition is true
+            gx_indices_root = gx_grid_root[cells_inside_roots_mask]
+            gy_indices_root = gy_grid_root[cells_inside_roots_mask]
+
+            # Add the root radius to all covered cells using advanced indexing
+            self.root_grid[gx_indices_root, gy_indices_root] += root_radius
 
     def _calculate_plant_competition(self):
         """Pass 2: Use the populated grids to calculate competition for each plant."""
