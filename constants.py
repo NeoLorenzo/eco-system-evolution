@@ -138,8 +138,6 @@ KG_PER_G = 0.001 # Conversion factor from grams to kilograms.
 PLANT_PHOTOSYNTHESIS_PER_AREA = (SOLAR_IRRADIANCE_W_PER_M2 * PHOTOSYNTHETIC_EFFICIENCY) / CM2_PER_M2
 
 # --- Metabolism Rate (Maintenance Cost) ---
-# DEPRECATED: This is no longer used as metabolism is now decoupled from photosynthesis.
-# PLANT_METABOLISM_PER_AREA = PLANT_PHOTOSYNTHESIS_PER_AREA * PLANT_RESPIRATION_FRAC_OF_GPP
 
 # The base rate of energy consumption for maintenance respiration at the reference temperature.
 # This is based on the total 2D area of the plant's canopy and roots.
@@ -198,7 +196,7 @@ CREATURE_ID_MAX = 9999
 # =============================================================================
 # --- PLANTS ---
 # =============================================================================
-# --- NEW: Life Cycle & Germination ---
+# --- Life Cycle & Germination ---
 # The passive energy drain on a dormant seed per hour.
 # Unit: Joules per Hour (J/h)
 PLANT_DORMANCY_METABOLISM_J_PER_HOUR = 10.0
@@ -276,7 +274,7 @@ PLANT_PRUNING_EFFICIENCY = 1.0
 # Unit: Centimeters (cm)
 PLANT_SPROUT_RADIUS_CM = 1.0
 
-# --- NEW: Growth Allocation ---
+# --- Growth Allocation ---
 # The ideal ratio of core cross-sectional area to canopy area that the plant
 # tries to maintain for structural stability. This is a behavioral target, not a fixed rule.
 # Unit: Unitless ratio (area/area)
@@ -319,8 +317,6 @@ PLANT_MAX_HYDRAULIC_HEIGHT_CM = 1000.0 # Represents a very tall tree (50 meters)
 # --- Reproduction & Spacing ---
 PLANT_MAX_NEIGHBORS = 5
 PLANT_CROWDED_RADIUS_CM = 30
-# DEPRECATED: PLANT_SEED_SPREAD_RADIUS_CM = 250
-# DEPRECATED: PLANT_REPRODUCTION_ATTEMPTS = 5
 
 # A base distance that a fruit will always roll, even on flat ground.
 # Unit: Centimeters (cm)

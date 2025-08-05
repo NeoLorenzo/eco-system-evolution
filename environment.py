@@ -16,7 +16,6 @@ class Environment:
         # This cache holds the original, full-resolution chunk surfaces.
         self.chunk_texture_cache = { "terrain": {}, "temperature": {}, "humidity": {} }
         
-        # --- NEW: A cache to hold the SCALED chunk surfaces for the current zoom level. ---
         self.scaled_chunk_cache = {}
 
         p = np.arange(256, dtype=int)
@@ -142,7 +141,6 @@ class Environment:
         if self.view_mode == "terrain": self.view_mode = "temperature"
         elif self.view_mode == "temperature": self.view_mode = "humidity"
         else: self.view_mode = "terrain"
-        # --- NEW: Clear the scaled cache because the view mode changed.
         self.scaled_chunk_cache.clear()
         log.log(f"Event: View switched to '{self.view_mode}'. Scaled chunk cache cleared.")
 
@@ -152,10 +150,8 @@ class Environment:
         if (chunk_x, chunk_y) not in current_cache:
             current_cache[(chunk_x, chunk_y)] = self._generate_chunk_texture(chunk_x, chunk_y)
 
-    # --- MAJOR CHANGE: The draw method is now much more efficient. ---
     def draw(self, screen, camera):
         """Draws the visible chunks, using a cache for scaled surfaces."""
-        # --- NEW: If zoom changed, the entire scaled cache is invalid. Clear it. ---
         if camera.zoom_changed:
             self.scaled_chunk_cache.clear()
             camera.zoom_changed = False # Reset the flag

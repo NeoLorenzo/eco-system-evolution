@@ -47,7 +47,6 @@ class Camera:
         self.zoom *= (1 + C.CAMERA_ZOOM_SPEED)
         self.zoom = min(self.zoom, C.CAMERA_MAX_ZOOM)
         self.dirty = True
-        # --- NEW: Set the zoom changed flag ---
         self.zoom_changed = True
 
     def zoom_out(self):
@@ -55,7 +54,6 @@ class Camera:
         self.zoom *= (1 - C.CAMERA_ZOOM_SPEED)
         self.zoom = max(self.zoom, C.CAMERA_MIN_ZOOM)
         self.dirty = True
-        # --- NEW: Set the zoom changed flag ---
         self.zoom_changed = True
 
     def draw_world_border(self, screen):

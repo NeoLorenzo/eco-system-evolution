@@ -14,7 +14,6 @@ class PlantManager:
         self.capacity = initial_capacity
         self.count = 0
 
-        # --- NEW: All NumPy data is stored in a dictionary for robust management ---
         self.arrays = {
             'ages': np.zeros(initial_capacity, dtype=np.float64),
             'heights': np.zeros(initial_capacity, dtype=np.float32),

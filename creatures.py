@@ -67,7 +67,7 @@ class Plant(Creature):
         self.genes = PlantGenes()
         self.index = -1 # Will be set by the PlantManager upon registration.
         
-        # --- NEW: Life Cycle State ---
+        # --- Life Cycle State ---
         self.life_stage = "seed" # Start as a seed
         
         # Physical properties are 0 until sprouting.
@@ -76,12 +76,12 @@ class Plant(Creature):
         self.root_radius = 0 # Root system radius, in centimeters (cm)
         self.core_radius = 0 # Structural core radius, in centimeters (cm)
         
-        # --- NEW: Dynamic Morphology ---
+        # --- Dynamic Morphology ---
         # Each plant has its own shape factor, which it adapts based on shade.
         self.radius_to_height_factor = C.PLANT_RADIUS_TO_HEIGHT_FACTOR
 
         self.reproductive_energy_stored = 0.0 # Energy invested in reproductive structures, in Joules (J)
-        self.reproductive_organs = [] # NEW: List to hold flower/fruit objects
+        self.reproductive_organs = [] # List to hold flower/fruit objects
         self.competition_factor = 1.0 # DEPRECATED, will be removed later.
         self.competition_update_accumulator = 0.0 # Time since last competition check, in seconds (s)
         self.has_reached_self_sufficiency = False # Has the plant ever had a positive energy balance?
@@ -167,7 +167,7 @@ class Plant(Creature):
             root_overlap_percent = (self.overlapped_root_area / root_area * 100) if root_area > 0 else 0
             log.log(f"    Competition: Shaded Area={self.shaded_canopy_area:.2f} ({shade_ratio*100:.1f}%), Root Overlap={self.overlapped_root_area:.2f} ({root_overlap_percent:.1f}%)")
 
-        # --- NEW: Shade Avoidance Response (Dynamic Morphology) ---
+        # --- Shade Avoidance Response (Dynamic Morphology) ---
         # The plant adjusts its shape based on how much shade it's in.
         # It interpolates between its base shape and its max "skinny" shape.
         target_factor = C.PLANT_RADIUS_TO_HEIGHT_FACTOR + (C.PLANT_MAX_SHADE_RADIUS_TO_HEIGHT_FACTOR - C.PLANT_RADIUS_TO_HEIGHT_FACTOR) * shade_ratio
@@ -178,7 +178,7 @@ class Plant(Creature):
         if is_debug_focused and abs(target_factor - self.radius_to_height_factor) > 0.01:
             log.log(f"    Morphology: Shade Ratio={shade_ratio:.2f}. Adjusting R/H Factor from {self.radius_to_height_factor:.2f} towards {target_factor:.2f}.")
 
-        # --- NEW: Calculate root competition efficiency ---
+        # --- Calculate root competition efficiency ---
         effective_root_area = max(0, root_area - self.overlapped_root_area)
         root_competition_eff = effective_root_area / root_area if root_area > 0 else 0
 
@@ -186,10 +186,10 @@ class Plant(Creature):
         root_to_canopy_ratio = self.root_radius / (self.radius + 1)
         soil_eff = max_soil_eff * min(1.0, root_to_canopy_ratio * C.PLANT_ROOT_EFFICIENCY_FACTOR) * root_competition_eff
         
-        # --- NEW: Fetch the pre-calculated aging efficiency from the manager ---
+        # --- Fetch the pre-calculated aging efficiency from the manager ---
         aging_efficiency = world.plant_manager.arrays['aging_efficiencies'][self.index]
 
-        # --- NEW: Fetch the pre-calculated hydraulic efficiency from the manager ---
+        # --- Fetch the pre-calculated hydraulic efficiency from the manager ---
         hydraulic_efficiency = world.plant_manager.arrays['hydraulic_efficiencies'][self.index]
         
         effective_canopy_area = max(0, canopy_area - self.shaded_canopy_area)
@@ -209,7 +209,7 @@ class Plant(Creature):
         
         net_energy_production = photosynthesis_gain - metabolism_cost
 
-        # --- NEW: Self-Pruning Logic ---
+        # --- Self-Pruning Logic ---
         # If the plant has an energy deficit, it sheds biomass to reduce maintenance costs
         # instead of just passively starving. This creates an emergent maximum size.
         if net_energy_production < 0:
@@ -431,7 +431,7 @@ class Plant(Creature):
         if not self.is_alive: return
 
         self.age += time_step
-        # --- NEW: Update the master 'ages' array in the manager ---
+        # --- Update the master 'ages' array in the manager ---
         world.plant_manager.arrays['ages'][self.index] = self.age
         
         is_debug_focused = (world.debug_focused_creature_id == self.id)
@@ -445,7 +445,7 @@ class Plant(Creature):
         else:  # "seedling" or "mature"
             self._update_growing_plant(world, time_step, is_debug_focused)
 
-        # --- NEW: Update and manage reproductive organs ---
+        # --- Update and manage reproductive organs ---
         if self.is_alive and self.life_stage == "mature":
             fruits_to_drop = []
             for organ in self.reproductive_organs:
@@ -589,7 +589,7 @@ class Plant(Creature):
         if core_radius >= 1:
             pygame.draw.circle(screen, C.COLOR_PLANT_CORE, screen_pos, core_radius)
             
-        # --- NEW: Draw flowers and fruits ---
+        # --- Draw flowers and fruits ---
         for organ in self.reproductive_organs:
             organ_pos = camera.world_to_screen(self.x + organ.relative_x, self.y + organ.relative_y)
             organ_radius = 2 # Fixed pixel size for visibility

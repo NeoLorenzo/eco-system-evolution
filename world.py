@@ -30,7 +30,7 @@ class World:
 
         self.quadtree = QuadTree(self.world_boundary, C.QUADTREE_CAPACITY)
         
-        # --- NEW: Global Competition Grid System ---
+        # --- Global Competition Grid System ---
         self.next_competition_update_time = 0.0 # The sim time at which the next global update will occur.
         grid_width = int(C.WORLD_WIDTH_CM // C.LIGHT_GRID_CELL_SIZE_CM)
         grid_height = int(C.WORLD_HEIGHT_CM // C.LIGHT_GRID_CELL_SIZE_CM)
@@ -49,7 +49,7 @@ class World:
         self.plant_births_this_period = 0
         log.log("World created. Creature lists are empty.")
 
-    # --- NEW: Method to schedule a plant's next logic update ---
+    # --- Method to schedule a plant's next logic update ---
     def schedule_plant_update(self, plant, delay_seconds):
         """
         Schedules a plant to have its update logic run after a certain delay.
@@ -298,7 +298,7 @@ class World:
         Processes all scheduled events within a large time window efficiently.
         This is the new main entry point for simulation logic from main.py.
         """
-        # --- NEW: Perform vectorized calculations once before the main loop ---
+        # --- Perform vectorized calculations once before the main loop ---
         self.plant_manager.update_aging_efficiencies()
         self.plant_manager.update_hydraulic_efficiencies()
         log.log("Performing bulk metabolism calculation for all plants...")
@@ -307,7 +307,7 @@ class World:
         start_time = self.time_manager.total_sim_seconds
         end_time = start_time + large_delta_time
 
-        # --- NEW: Process global updates that fall within this time slice ---
+        # --- Process global updates that fall within this time slice ---
         while self.next_competition_update_time < end_time:
             # Set the clock to the precise time of this global event to maintain temporal accuracy
             self.time_manager.total_sim_seconds = self.next_competition_update_time
