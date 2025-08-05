@@ -1,5 +1,7 @@
 # constants.py
 
+import numpy as np
+
 # =============================================================================
 # --- SIMULATION & PERFORMANCE SETTINGS ---
 # =============================================================================
@@ -352,6 +354,17 @@ PLANT_SOIL_TYPE_TO_ID = {
     "dirt": 2,
     None: -1 # Represents invalid terrain like water
 }
+
+# A NumPy array that maps soil IDs directly to their efficiency multipliers.
+# This is created dynamically from the two dictionaries above to ensure they are always in sync.
+# Index 0 = sand's efficiency, Index 1 = grass's efficiency, etc.
+# We add a value for the 'None' type (-1) which will be 0.0, although it's not typically accessed.
+_efficiency_list = [0.0] * (len(PLANT_SOIL_TYPE_TO_ID) -1)
+for soil_type, soil_id in PLANT_SOIL_TYPE_TO_ID.items():
+    if soil_id != -1:
+        _efficiency_list[soil_id] = PLANT_SOIL_EFFICIENCY.get(soil_type, 0.0)
+PLANT_SOIL_ID_TO_EFFICIENCY = np.array(_efficiency_list, dtype=np.float32)
+
 
 # time for senescence. It defines the age at which a plant's metabolic
 # efficiency drops to ~37% (1/e) of its peak. It's a measure of how
