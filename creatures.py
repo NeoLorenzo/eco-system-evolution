@@ -190,7 +190,8 @@ class Plant(Creature):
         
         # --- 4. Calculate energy gain (Photosynthesis) ---
         effective_canopy_area = max(0, canopy_area - self.shaded_canopy_area)
-        photosynthesis_gain = effective_canopy_area * C.PLANT_PHOTOSYNTHESIS_PER_AREA * self.environment_eff * soil_eff * aging_efficiency * hydraulic_efficiency * time_step 
+        environmental_efficiency = world.plant_manager.arrays['environmental_efficiencies'][self.index]
+        photosynthesis_gain = effective_canopy_area * C.PLANT_PHOTOSYNTHESIS_PER_AREA * environmental_efficiency * soil_eff * aging_efficiency * hydraulic_efficiency * time_step 
         
         # --- 5. Calculate energy loss (Metabolism) ---
         metabolism_cost_per_second = world.plant_manager.arrays['metabolism_costs_per_second'][self.index]
