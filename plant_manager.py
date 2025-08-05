@@ -56,6 +56,11 @@ class PlantManager:
         self.arrays['energies'][self.count] = plant.energy
         self.arrays['reproductive_energies_stored'][self.count] = plant.reproductive_energy_stored
         self.arrays['positions'][self.count] = (plant.x, plant.y)
+        
+        # Look up the soil type string from the plant and store its corresponding ID.
+        soil_id = C.PLANT_SOIL_TYPE_TO_ID[plant.soil_type]
+        self.arrays['soil_type_ids'][self.count] = soil_id
+
         # Explicitly set the initial energy in the array upon registration.
         # This makes the array's state correct from the very first moment.
         self.arrays['energies'][self.count] = plant.energy
