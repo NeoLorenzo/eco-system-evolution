@@ -37,7 +37,7 @@ def run_simulation():
         # We cap it to prevent a "spiral of death" if a frame takes too long.
         real_delta_seconds = min(clock.tick(C.CLOCK_TICK_RATE) / C.MILLISECONDS_PER_SECOND, 0.25)
 
-        # --- Event Handling (No Change) ---
+        # --- Event Handling ---
         for event in pygame.event.get():
             if event.type == pygame.QUIT: running = False
             if event.type == pygame.MOUSEBUTTONDOWN:
@@ -66,7 +66,6 @@ def run_simulation():
             world.update_in_bulk(scaled_delta_time)
         
         # --- Drawing (The "Render" part) ---
-        # This part now runs completely independently of the simulation logic loop.
         screen.fill(C.COLOR_VOID)
         world.draw(screen)
         
@@ -89,17 +88,13 @@ def main():
     logger.log("--- Simulation Exit ---")
 
 if __name__ == '__main__':
-    # --- NEW: Profiler execution block ---
     profiler = cProfile.Profile()
     try:
         profiler.run('main()')
     except SystemExit:
-        # This allows the simulation to exit cleanly without a profiler error
         pass
     finally:
         print("\n\n--- PROFILER REPORT ---")
         stats = pstats.Stats(profiler)
-        # Sort the stats by the cumulative time spent in each function
         stats.sort_stats(pstats.SortKey.CUMULATIVE)
-        # Print the top 15 results
         stats.print_stats(C.PROFILER_PRINT_LINE_COUNT)
