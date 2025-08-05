@@ -239,12 +239,12 @@ class World:
         cell_area = C.LIGHT_GRID_CELL_SIZE_CM ** 2
         pm = self.plant_manager
 
-        # Iterate by index to read from NumPy and write to the plant objects.
+        # Create temporary arrays to store the results of our calculations.
+        shaded_canopy_areas = np.zeros(pm.count, dtype=np.float32)
+        overlapped_root_areas = np.zeros(pm.count, dtype=np.float32)
+
+        # Iterate by index to read from NumPy and write to the temporary arrays.
         for i in range(pm.count):
-            plant = pm.plants[i] # Get the object to update it.
-            plant.shaded_canopy_area = 0.0
-            plant.overlapped_root_area = 0.0
-            
             radius = pm.arrays['radii'][i]
             if radius <= 0: continue
 
@@ -281,7 +281,7 @@ class World:
 
             # The total shaded area is the number of shaded cells times the area of a cell
             num_shaded_cells = np.sum(shaded_cells_mask)
-            plant.shaded_canopy_area = num_shaded_cells * cell_area
+            shaded_canopy_areas[i] = num_shaded_cells * cell_area
 
             # --- Calculate Root Overlap (Vectorized) ---
             min_gx_root = int(max(0, (x - root_radius) / C.LIGHT_GRID_CELL_SIZE_CM))
@@ -319,11 +319,17 @@ class World:
             overlap_ratios = (competed_pressures - root_radius) / competed_pressures
 
             # The total overlapped area is the sum of the ratios multiplied by the area of a cell
-            plant.overlapped_root_area = np.sum(overlap_ratios) * cell_area
+            overlapped_root_areas[i] = np.sum(overlap_ratios) * cell_area
             
             # Clamp values to be safe
-            plant.shaded_canopy_area = min(plant.shaded_canopy_area, radius**2 * np.pi)
-            plant.overlapped_root_area = min(plant.overlapped_root_area, my_root_area)
+            shaded_canopy_areas[i] = min(shaded_canopy_areas[i], radius**2 * np.pi)
+            overlapped_root_areas[i] = min(overlapped_root_areas[i], my_root_area)
+
+        # --- Final Assignment Step ---
+        # Now, assign the calculated values from our temporary arrays to the actual plant objects.
+        for i in range(pm.count):
+            pm.plants[i].shaded_canopy_area = shaded_canopy_areas[i]
+            pm.plants[i].overlapped_root_area = overlapped_root_areas[i]
 
     def _process_housekeeping(self):
         """Handles adding newborns to the main lists and removing dead creatures."""
