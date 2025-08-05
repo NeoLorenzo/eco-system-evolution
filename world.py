@@ -326,7 +326,11 @@ class World:
             overlapped_root_areas[i] = min(overlapped_root_areas[i], my_root_area)
 
         # --- Final Assignment Step ---
-        # Now, assign the calculated values from our temporary arrays to the actual plant objects.
+        # Now, assign the calculated values from our temporary arrays.
+        # Step 1: Bulk copy the results into the PlantManager's NumPy arrays.
+        pm.arrays['overlapped_root_areas'][:pm.count] = overlapped_root_areas
+
+        # Step 2: Assign values to the individual Python objects (this will be phased out later).
         for i in range(pm.count):
             pm.plants[i].shaded_canopy_area = shaded_canopy_areas[i]
             pm.plants[i].overlapped_root_area = overlapped_root_areas[i]
