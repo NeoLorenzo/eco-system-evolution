@@ -120,21 +120,18 @@ class World:
     def populate_world(self):
         log.log("Populating the world with initial creatures...")
         initial_plant = Plant(self, C.INITIAL_PLANT_POSITION[0], C.INITIAL_PLANT_POSITION[1])
-        self.plant_manager.add_plant(initial_plant) # <--- CHANGE: Use the manager
+        self.plant_manager.add_plant(initial_plant)
         self.schedule_plant_update(initial_plant, C.PLANT_LOGIC_UPDATE_INTERVAL_SECONDS)
-        # --- CHANGE: Insert into quadtree ONCE at birth ---
         self.quadtree.insert(initial_plant)
         
         initial_animal = Animal(C.INITIAL_ANIMAL_POSITION[0], C.INITIAL_ANIMAL_POSITION[1])
         self.animals.append(initial_animal)
         self.schedule_animal_update(initial_animal, C.ANIMAL_UPDATE_TICK_SECONDS)
-        # --- CHANGE: Insert into quadtree ONCE at birth ---
         self.quadtree.insert(initial_animal)
         log.log("World population complete.")
 
     def add_newborn(self, creature):
         self.newborns.append(creature)
-        # --- CHANGE: Insert into quadtree IMMEDIATELY for correct interaction checks. ---
         self.quadtree.insert(creature)
         
         if isinstance(creature, Plant):
@@ -146,7 +143,6 @@ class World:
     def report_death(self, creature):
         """A creature calls this method when it dies to be counted."""
         self.graveyard.append(creature)
-        # --- CHANGE: Remove from quadtree ONCE at death ---
         self.quadtree.remove(creature)
         if isinstance(creature, Plant):
             self.plant_deaths_this_period += 1
@@ -274,7 +270,7 @@ class World:
         # --- Housekeeping ---
         for dead_creature in self.graveyard:
             if isinstance(dead_creature, Plant):
-                self.plant_manager.remove_plant(dead_creature) # <--- CHANGE: Use the manager
+                self.plant_manager.remove_plant(dead_creature)
             elif isinstance(dead_creature, Animal):
                 if dead_creature in self.animals: self.animals.remove(dead_creature)
         self.graveyard.clear()
@@ -282,7 +278,7 @@ class World:
         # Process newborns
         for creature in self.newborns:
             if isinstance(creature, Plant):
-                self.plant_manager.add_plant(creature) # <--- CHANGE: Use the manager
+                self.plant_manager.add_plant(creature)
             elif isinstance(creature, Animal):
                 self.animals.append(creature)
         self.newborns.clear()
@@ -369,7 +365,7 @@ class World:
     def draw(self, screen):
         self.environment.draw(screen, self.camera)
         self.camera.draw_world_border(screen)
-        for plant in self.plant_manager: # <--- CHANGE: Use the manager
+        for plant in self.plant_manager:
             plant.draw(screen, self.camera)
         for animal in self.animals:
             animal.draw(screen, self.camera)
@@ -404,7 +400,7 @@ class World:
         
         log.log("\n--- Population Statistics ---")
         log.log(f"  > Report for Day {current_day:.1f} (covering the last {log_period_days:.1f} days)")
-        log.log(f"  Living Plants: {len(self.plant_manager):,}") # <--- CHANGE: Use the manager
+        log.log(f"  Living Plants: {len(self.plant_manager):,}")
         log.log(f"  Living Animals: {len(self.animals):,}")
         log.log(f"  - Plant Births this Period: {self.plant_births_this_period:,}")
         log.log(f"  - Plant Deaths this Period: {self.plant_deaths_this_period:,}")

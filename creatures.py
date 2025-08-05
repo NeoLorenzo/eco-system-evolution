@@ -3,7 +3,7 @@
 import pygame
 import constants as C
 import random
-import math
+import numpy as np
 from quadtree import Rectangle
 from genes import PlantGenes
 import logger as log
@@ -19,11 +19,11 @@ class ReproductiveOrgan:
         self.age = 0 # Age of the organ, in seconds (s)
         
         # Position is relative to the parent plant's center, on its canopy
-        angle = random.uniform(0, 2 * math.pi)
+        angle = random.uniform(0, 2 * np.pi)
         # Place it somewhere within the canopy, not just at the edge
         radius = random.uniform(0, parent_plant.radius) 
-        self.relative_x = radius * math.cos(angle)
-        self.relative_y = radius * math.sin(angle)
+        self.relative_x = radius * np.cos(angle)
+        self.relative_y = radius * np.sin(angle)
         self.world_x = parent_plant.x + self.relative_x
         self.world_y = parent_plant.y + self.relative_y
 
@@ -158,8 +158,8 @@ class Plant(Creature):
         # calculated and updated globally by the World class on a fixed interval.
         # The per-plant accumulator and call to calculate_physical_overlap have been removed.
 
-        canopy_area = math.pi * self.radius**2
-        root_area = math.pi * self.root_radius**2
+        canopy_area = np.pi * self.radius**2
+        root_area = np.pi * self.root_radius**2
 
         shade_ratio = (self.shaded_canopy_area / canopy_area) if canopy_area > 0 else 0
 
@@ -184,7 +184,6 @@ class Plant(Creature):
 
         max_soil_eff = self.genes.soil_efficiency.get(self.soil_type, 0)
         root_to_canopy_ratio = self.root_radius / (self.radius + 1)
-                # --- CHANGE: Soil efficiency is now penalized by root competition ---
         soil_eff = max_soil_eff * min(1.0, root_to_canopy_ratio * C.PLANT_ROOT_EFFICIENCY_FACTOR) * root_competition_eff
         
         # --- NEW: Fetch the pre-calculated aging efficiency from the manager ---
@@ -203,7 +202,7 @@ class Plant(Creature):
         
         temp_difference = self.temperature - C.PLANT_RESPIRATION_REFERENCE_TEMP
         respiration_factor = C.PLANT_Q10_FACTOR ** (temp_difference / C.PLANT_Q10_INTERVAL_DIVISOR)
-        core_area = math.pi * self.core_radius**2 # Calculate the area of the structural core
+        core_area = np.pi * self.core_radius**2 # Calculate the area of the structural core
         metabolism_cost = (canopy_area + root_area + core_area) * C.PLANT_BASE_MAINTENANCE_RESPIRATION_PER_AREA * respiration_factor * time_step
         
         net_energy_production = photosynthesis_gain - metabolism_cost
@@ -221,7 +220,6 @@ class Plant(Creature):
                 # Calculate the total area of biomass that needs to be shed to offset the deficit.
                 area_to_shed = (energy_deficit / maintenance_cost_per_area_tick) * C.PLANT_PRUNING_EFFICIENCY
                 
-                # --- CHANGE: Shed area proportionally from ALL living tissues, including the core. ---
                 total_sheddable_area = canopy_area + root_area + core_area
                 if total_sheddable_area > 0:
                     # Determine the fraction of the total area each component represents.
@@ -243,9 +241,9 @@ class Plant(Creature):
                     new_root_area = max(0, root_area - shed_root_area)
                     new_core_area = max(0, core_area - shed_core_area)
                     
-                    self.radius = math.sqrt(new_canopy_area / math.pi)
-                    self.root_radius = math.sqrt(new_root_area / math.pi)
-                    self.core_radius = math.sqrt(new_core_area / math.pi)
+                    self.radius = np.sqrt(new_canopy_area / np.pi)
+                    self.root_radius = np.sqrt(new_root_area / np.pi)
+                    self.core_radius = np.sqrt(new_core_area / np.pi)
                     self.height = self.radius * self.radius_to_height_factor # Use instance variable
 
                     # Update all manager arrays with new pruned values
@@ -368,10 +366,9 @@ class Plant(Creature):
 
                 # 1. Grow the Core
                 if core_investment > 0:
-                # --- CHANGE: Use the new, more expensive constant for core growth ---
                     added_core_area = core_investment / C.PLANT_CORE_BIOMASS_ENERGY_COST
-                    new_core_area = (math.pi * self.core_radius**2) + added_core_area
-                    self.core_radius = math.sqrt(new_core_area / math.pi)
+                    new_core_area = (np.pi * self.core_radius**2) + added_core_area
+                    self.core_radius = np.sqrt(new_core_area / np.pi)
                     world.plant_manager.arrays['core_radii'][self.index] = self.core_radius
 
                 # 2. Grow Canopy and Roots with remaining energy
@@ -383,11 +380,11 @@ class Plant(Creature):
                     added_root_area = added_biomass_area * root_alloc_factor
                     
                     new_canopy_area = canopy_area + added_canopy_area
-                    self.radius = math.sqrt(new_canopy_area / math.pi)
+                    self.radius = np.sqrt(new_canopy_area / np.pi)
                     world.plant_manager.arrays['radii'][self.index] = self.radius
 
                     new_root_area = root_area + added_root_area
-                    self.root_radius = math.sqrt(new_root_area / math.pi)
+                    self.root_radius = np.sqrt(new_root_area / np.pi)
                     world.plant_manager.arrays['root_radii'][self.index] = self.root_radius
 
                     self.height = self.radius * self.radius_to_height_factor # Use instance variable
@@ -467,12 +464,11 @@ class Plant(Creature):
                 elif is_debug_focused:
                     log.log(f"    REPRODUCTION: Fruits are ready to drop, but plant lacks energy to provision a seed ({self.energy:.2f} < {C.PLANT_SEED_PROVISIONING_ENERGY}).")
 
-        # --- NEW: Structural Collapse Check ---
         # This check happens at the very end of the update, after all growth and pruning.
         if self.is_alive and self.life_stage != "seed":
-            final_canopy_area = math.pi * self.radius**2
+            final_canopy_area = np.pi * self.radius**2
             if final_canopy_area > 1.0: # Only check for non-trivial plants
-                final_core_area = math.pi * self.core_radius**2
+                final_core_area = np.pi * self.core_radius**2
                 final_ratio = final_core_area / final_canopy_area
                 if final_ratio < C.PLANT_MIN_CORE_TO_CANOPY_RATIO:
                     if is_debug_focused:
@@ -494,16 +490,16 @@ class Plant(Creature):
         # Vector from parent's center to the fruit's growth spot
         vec_x = origin_x - self.x
         vec_y = origin_y - self.y
-        dist_from_center = math.sqrt(vec_x**2 + vec_y**2)
+        dist_from_center = np.sqrt(vec_x**2 + vec_y**2)
 
         # Normalize the vector and scale it by the parent's full radius to find the drop point on the circumference
         if dist_from_center > 0:
             drop_x = self.x + (vec_x / dist_from_center) * self.radius
             drop_y = self.y + (vec_y / dist_from_center) * self.radius
         else: # If fruit grew at the exact center, pick a random edge point
-            angle = random.uniform(0, 2 * math.pi)
-            drop_x = self.x + self.radius * math.cos(angle)
-            drop_y = self.y + self.radius * math.sin(angle)
+            angle = random.uniform(0, 2 * np.pi)
+            drop_x = self.x + self.radius * np.cos(angle)
+            drop_y = self.y + self.radius * np.sin(angle)
 
         # 2. Determine slope at the drop point
         # Sample elevation at and around the drop point to find the steepest downhill gradient
@@ -517,7 +513,7 @@ class Plant(Creature):
         grad_x = e_west - e_east  # Positive means downhill is East
 
         # 3. Calculate roll distance and direction
-        magnitude = math.sqrt(grad_x**2 + grad_y**2)
+        magnitude = np.sqrt(grad_x**2 + grad_y**2)
         roll_distance = C.PLANT_SEED_ROLL_BASE_DISTANCE_CM
         
         if magnitude > 0.001: # Avoid division by zero and tiny movements
@@ -525,9 +521,9 @@ class Plant(Creature):
             roll_dir_y = grad_y / magnitude
             roll_distance += magnitude * C.PLANT_SEED_ROLL_DISTANCE_FACTOR
         else: # On flat ground, roll in a random direction
-            angle = random.uniform(0, 2 * math.pi)
-            roll_dir_x = math.cos(angle)
-            roll_dir_y = math.sin(angle)
+            angle = random.uniform(0, 2 * np.pi)
+            roll_dir_x = np.cos(angle)
+            roll_dir_y = np.sin(angle)
 
         final_x = drop_x + roll_dir_x * roll_distance
         final_y = drop_y + roll_dir_y * roll_distance
@@ -561,9 +557,9 @@ class Plant(Creature):
 
     def calculate_environment_efficiency(self, temperature, humidity):
         temp_diff = abs(temperature - self.genes.optimal_temperature)
-        temp_eff = math.exp(-((temp_diff / self.genes.temperature_tolerance)**2))
+        temp_eff = np.exp(-((temp_diff / self.genes.temperature_tolerance)**2))
         hum_diff = abs(humidity - self.genes.optimal_humidity)
-        hum_eff = math.exp(-((hum_diff / self.genes.humidity_tolerance)**2))
+        hum_eff = np.exp(-((hum_diff / self.genes.humidity_tolerance)**2))
         return temp_eff * hum_eff
 
     def draw(self, screen, camera):
@@ -613,7 +609,6 @@ class Animal(Creature):
                     closest_plant = plant
         return closest_plant
 
-    # --- MAJOR CHANGE: The update logic now uses a fixed time_step ---
     def update(self, world, time_step):
         """
         Runs the core biological logic for a fixed time_step.
@@ -628,7 +623,6 @@ class Animal(Creature):
             self.die(world, "starvation")
             return
         
-        # --- CHANGE: Track if the animal moved this tick ---
         moved = False
 
         if self.can_reproduce():
@@ -644,7 +638,7 @@ class Animal(Creature):
             if self.target_plant:
                 direction_x = self.target_plant.x - self.x
                 direction_y = self.target_plant.y - self.y
-                distance = math.sqrt(direction_x**2 + direction_y**2)
+                distance = np.sqrt(direction_x**2 + direction_y**2)
                 
                 # Use the fixed time_step for movement
                 move_dist = C.ANIMAL_SPEED_CM_PER_SEC * time_step
@@ -664,14 +658,13 @@ class Animal(Creature):
                 # Random wandering
                 move_x = random.uniform(-1, 1)
                 move_y = random.uniform(-1, 1)
-                norm = math.sqrt(move_x**2 + move_y**2)
+                norm = np.sqrt(move_x**2 + move_y**2)
                 if norm > 0:
                     move_dist = C.ANIMAL_SPEED_CM_PER_SEC * time_step
                     self.x += (move_x / norm) * move_dist
                     self.y += (move_y / norm) * move_dist
                     moved = True # The animal moved
 
-    # --- CHANGE: If the animal moved, tell the world to update the quadtree ---
         if moved:
             world.update_creature_in_quadtree(self)
 
