@@ -33,6 +33,7 @@ class PlantManager:
             'positions': np.zeros((initial_capacity, 2), dtype=np.float32),
             'aging_efficiencies': np.ones(initial_capacity, dtype=np.float32),
             'hydraulic_efficiencies': np.ones(initial_capacity, dtype=np.float32),
+            'environmental_efficiencies': np.ones(initial_capacity, dtype=np.float32),
             'metabolism_costs_per_second': np.zeros(initial_capacity, dtype=np.float32),
             'canopy_areas': np.zeros(initial_capacity, dtype=np.float32), # Caches the result of pi * r^2
         }
@@ -89,6 +90,31 @@ class PlantManager:
         """
         live_heights = self.arrays['heights'][:self.count]
         self.arrays['hydraulic_efficiencies'][:self.count] = np.exp(-(live_heights / C.PLANT_MAX_HYDRAULIC_HEIGHT_CM))
+
+    def update_environmental_efficiencies(self, environment):
+        """
+        Calculates environmental efficiency for ALL plants in a single vectorized operation.
+        """
+        if self.count == 0: return
+
+        positions = self.arrays['positions'][:self.count]
+        x_coords = positions[:, 0]
+        y_coords = positions[:, 1]
+
+        temperatures = environment.get_temperatures_vectorized(x_coords, y_coords)
+        humidities = environment.get_humidities_vectorized(x_coords, y_coords) # NOTE: We will need to create this method next.
+
+        # This is a placeholder for gene data. For now, we assume all plants have the same genes.
+        # This will need to be refactored later when genetics become variable.
+        from genes import PlantGenes
+        temp_genes = PlantGenes()
+
+        temp_diff = np.abs(temperatures - temp_genes.optimal_temperature)
+        temp_eff = np.exp(-((temp_diff / temp_genes.temperature_tolerance)**2))
+        hum_diff = np.abs(humidities - temp_genes.optimal_humidity)
+        hum_eff = np.exp(-((hum_diff / temp_genes.humidity_tolerance)**2))
+        
+        self.arrays['environmental_efficiencies'][:self.count] = temp_eff * hum_eff
 
     def update_metabolism_costs(self, environment):
         """
