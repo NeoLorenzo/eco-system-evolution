@@ -146,10 +146,15 @@ class PlantManager:
         root_to_canopy_ratios = root_radii / (radii + 1)
         ratio_modifier = np.minimum(1.0, root_to_canopy_ratios * C.PLANT_ROOT_EFFICIENCY_FACTOR)
 
-        # --- Step 3: Combine factors ---
-        # For now, we assume root_competition_eff is 1.0. We will incorporate the
-        # real competition values when we vectorize the competition calculation itself.
-        root_competition_eff = 1.0 # Placeholder
+        # --- Step 3: Calculate the root competition modifier ---
+        # We add a very small number (epsilon) to the denominator to prevent division by zero
+        # for plants that might have zero root area.
+        root_areas = np.pi * root_radii**2
+        overlapped_areas = self.arrays['overlapped_root_areas'][live_indices]
+        effective_root_areas = np.maximum(0, root_areas - overlapped_areas)
+        root_competition_eff = effective_root_areas / (root_areas + 1e-9) # Add epsilon for safety
+
+        # --- Step 4: Combine all factors ---
         final_soil_eff = max_soil_effs * ratio_modifier * root_competition_eff
 
         # Store the final results back into the main array
