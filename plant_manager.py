@@ -31,6 +31,7 @@ class PlantManager:
             'energies': np.zeros(initial_capacity, dtype=np.float64),
             'reproductive_energies_stored': np.zeros(initial_capacity, dtype=np.float64),
             'positions': np.zeros((initial_capacity, 2), dtype=np.float32),
+            'soil_type_ids': np.zeros(initial_capacity, dtype=np.int8), # Stores soil type as an integer ID
             'aging_efficiencies': np.ones(initial_capacity, dtype=np.float32),
             'hydraulic_efficiencies': np.ones(initial_capacity, dtype=np.float32),
             'environmental_efficiencies': np.ones(initial_capacity, dtype=np.float32),
