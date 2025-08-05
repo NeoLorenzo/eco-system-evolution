@@ -200,10 +200,12 @@ class Plant(Creature):
 
         photosynthesis_gain = effective_canopy_area * C.PLANT_PHOTOSYNTHESIS_PER_AREA * self.environment_eff * soil_eff * aging_efficiency * hydraulic_efficiency * time_step 
         
-        temp_difference = self.temperature - C.PLANT_RESPIRATION_REFERENCE_TEMP
-        respiration_factor = C.PLANT_Q10_FACTOR ** (temp_difference / C.PLANT_Q10_INTERVAL_DIVISOR)
-        core_area = np.pi * self.core_radius**2 # Calculate the area of the structural core
-        metabolism_cost = (canopy_area + root_area + core_area) * C.PLANT_BASE_MAINTENANCE_RESPIRATION_PER_AREA * respiration_factor * time_step
+        # Fetch the pre-calculated metabolism cost per second from the manager.
+        metabolism_cost_per_second = world.plant_manager.arrays['metabolism_costs_per_second'][self.index]
+        metabolism_cost = metabolism_cost_per_second * time_step
+        
+        # We still need core_area for the self-pruning logic, so it must be calculated here.
+        core_area = np.pi * self.core_radius**2
         
         net_energy_production = photosynthesis_gain - metabolism_cost
 
@@ -213,14 +215,20 @@ class Plant(Creature):
         if net_energy_production < 0:
             energy_deficit = abs(net_energy_production)
             
-            # Calculate the cost to maintain 1 cm^2 of biomass for this tick.
-            maintenance_cost_per_area_tick = C.PLANT_BASE_MAINTENANCE_RESPIRATION_PER_AREA * respiration_factor * time_step
+            # Calculate the total area of the plant to derive the maintenance cost per area.
+            total_sheddable_area = canopy_area + root_area + core_area
+            
+            # Derive the maintenance cost per area from the pre-calculated total metabolism.
+            # This avoids re-calculating the respiration_factor.
+            if total_sheddable_area > 0:
+                maintenance_cost_per_area_tick = (metabolism_cost_per_second / total_sheddable_area) * time_step
+            else:
+                maintenance_cost_per_area_tick = 0
 
             if maintenance_cost_per_area_tick > 0:
                 # Calculate the total area of biomass that needs to be shed to offset the deficit.
                 area_to_shed = (energy_deficit / maintenance_cost_per_area_tick) * C.PLANT_PRUNING_EFFICIENCY
                 
-                total_sheddable_area = canopy_area + root_area + core_area
                 if total_sheddable_area > 0:
                     # Determine the fraction of the total area each component represents.
                     canopy_fraction = canopy_area / total_sheddable_area

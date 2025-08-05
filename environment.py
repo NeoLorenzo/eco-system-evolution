@@ -34,6 +34,21 @@ class Environment:
         )
         return (noise_value[0] + 1) / 2
 
+    def get_temperatures_vectorized(self, x_coords, y_coords):
+        """
+        Generates temperature values for entire arrays of x and y coordinates.
+        Args:
+            x_coords (np.ndarray): A 1D NumPy array of world x-coordinates.
+            y_coords (np.ndarray): A 1D NumPy array of world y-coordinates.
+        Returns:
+            np.ndarray: A 1D NumPy array of corresponding temperature values.
+        """
+        noise_value = perlin_noise_2d(
+            self.p, (x_coords + self.temp_seed) / C.NOISE_SCALE, (y_coords + self.temp_seed) / C.NOISE_SCALE,
+            octaves=C.NOISE_OCTAVES, persistence=C.NOISE_PERSISTENCE, lacunarity=C.NOISE_LACUNARITY
+        )
+        return (noise_value + 1) / 2
+
     def get_elevation(self, x, y):
         wx_grid, wy_grid = np.array([x]), np.array([y])
         noise_value = perlin_noise_2d(

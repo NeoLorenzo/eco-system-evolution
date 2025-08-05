@@ -301,6 +301,8 @@ class World:
         # --- NEW: Perform vectorized calculations once before the main loop ---
         self.plant_manager.update_aging_efficiencies()
         self.plant_manager.update_hydraulic_efficiencies()
+        log.log("Performing bulk metabolism calculation for all plants...")
+        self.plant_manager.update_metabolism_costs(self.environment)
 
         start_time = self.time_manager.total_sim_seconds
         end_time = start_time + large_delta_time

@@ -26,6 +26,7 @@ class PlantManager:
             'positions': np.zeros((initial_capacity, 2), dtype=np.float32),
             'aging_efficiencies': np.ones(initial_capacity, dtype=np.float32),
             'hydraulic_efficiencies': np.ones(initial_capacity, dtype=np.float32),
+            'metabolism_costs_per_second': np.zeros(initial_capacity, dtype=np.float32),
         }
 
     def add_plant(self, plant):
@@ -78,6 +79,36 @@ class PlantManager:
         live_heights = self.arrays['heights'][:self.count]
         self.arrays['hydraulic_efficiencies'][:self.count] = np.exp(-(live_heights / C.PLANT_MAX_HYDRAULIC_HEIGHT_CM))
 
+    def update_metabolism_costs(self, environment):
+        """
+        Calculates the metabolic energy cost per second for ALL plants
+        in a single vectorized operation.
+        """
+        if self.count == 0: return
+
+        # Get slices of the arrays for all living plants
+        positions = self.arrays['positions'][:self.count]
+        radii = self.arrays['radii'][:self.count]
+        root_radii = self.arrays['root_radii'][:self.count]
+        core_radii = self.arrays['core_radii'][:self.count]
+
+        # Get temperatures for all plants at once using the new vectorized method
+        temperatures = environment.get_temperatures_vectorized(positions[:, 0], positions[:, 1])
+
+        # Perform calculations for ALL plants at once
+        canopy_areas = np.pi * radii**2
+        root_areas = np.pi * root_radii**2
+        core_areas = np.pi * core_radii**2
+        total_areas = canopy_areas + root_areas + core_areas
+
+        temp_differences = temperatures - C.PLANT_RESPIRATION_REFERENCE_TEMP
+        respiration_factors = C.PLANT_Q10_FACTOR ** (temp_differences / C.PLANT_Q10_INTERVAL_DIVISOR)
+
+        metabolism_per_second = total_areas * C.PLANT_BASE_MAINTENANCE_RESPIRATION_PER_AREA * respiration_factors
+
+        # Store the final results back into the main array
+        self.arrays['metabolism_costs_per_second'][:self.count] = metabolism_per_second
+
     def remove_plant(self, plant_to_remove):
         """
         Removes a plant efficiently using the 'swap and pop' method.
@@ -88,7 +119,7 @@ class PlantManager:
         Current arrays to swap:
         - ages, heights, radii, root_radii, core_radii, energies,
         - reproductive_energies_stored, positions, aging_efficiencies,
-        - hydraulic_efficiencies
+        - hydraulic_efficiencies, metabolism_costs_per_second
         """
         if plant_to_remove.index >= self.count or self.plants[plant_to_remove.index] is not plant_to_remove:
             log.log(f"ERROR: Attempted to remove a plant with an invalid index or mismatched object. Index: {plant_to_remove.index}")
