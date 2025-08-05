@@ -252,20 +252,36 @@ class World:
             height = pm.arrays['heights'][i]
             root_radius = pm.arrays['root_radii'][i]
 
-            # --- Calculate Shaded Area ---
+            # --- Calculate Shaded Area (Vectorized) ---
             min_gx = int(max(0, (x - radius) / C.LIGHT_GRID_CELL_SIZE_CM))
             max_gx = int(min(self.light_grid.shape[0] - 1, (x + radius) / C.LIGHT_GRID_CELL_SIZE_CM))
             min_gy = int(max(0, (y - radius) / C.LIGHT_GRID_CELL_SIZE_CM))
             max_gy = int(min(self.light_grid.shape[1] - 1, (y + radius) / C.LIGHT_GRID_CELL_SIZE_CM))
 
-            for gx in range(min_gx, max_gx + 1):
-                for gy in range(min_gy, max_gy + 1):
-                    cell_wx = (gx + 0.5) * C.LIGHT_GRID_CELL_SIZE_CM
-                    cell_wy = (gy + 0.5) * C.LIGHT_GRID_CELL_SIZE_CM
-                    dist_sq = (x - cell_wx)**2 + (y - cell_wy)**2
-                    if dist_sq <= radius**2:
-                        if height < self.light_grid[gx, gy]:
-                            plant.shaded_canopy_area += cell_area
+            # Create a grid of coordinates for the bounding box of the plant
+            gx_range = np.arange(min_gx, max_gx + 1)
+            gy_range = np.arange(min_gy, max_gy + 1)
+            gx_grid, gy_grid = np.meshgrid(gx_range, gy_range)
+
+            # Calculate the world coordinates of the center of each grid cell
+            cell_wx = (gx_grid + 0.5) * C.LIGHT_GRID_CELL_SIZE_CM
+            cell_wy = (gy_grid + 0.5) * C.LIGHT_GRID_CELL_SIZE_CM
+
+            # Find all cells within the plant's radius
+            dist_sq = (x - cell_wx)**2 + (y - cell_wy)**2
+            cells_inside_canopy_mask = dist_sq <= radius**2
+
+            # Get the grid indices where the condition is true
+            gx_indices = gx_grid[cells_inside_canopy_mask]
+            gy_indices = gy_grid[cells_inside_canopy_mask]
+
+            # From the cells inside the canopy, find which ones are shaded
+            canopy_heights_on_grid = self.light_grid[gx_indices, gy_indices]
+            shaded_cells_mask = height < canopy_heights_on_grid
+
+            # The total shaded area is the number of shaded cells times the area of a cell
+            num_shaded_cells = np.sum(shaded_cells_mask)
+            plant.shaded_canopy_area = num_shaded_cells * cell_area
 
             # --- Calculate Root Overlap ---
             min_gx_root = int(max(0, (x - root_radius) / C.LIGHT_GRID_CELL_SIZE_CM))
