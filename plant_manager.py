@@ -45,6 +45,9 @@ class PlantManager:
         self.arrays['energies'][self.count] = plant.energy
         self.arrays['reproductive_energies_stored'][self.count] = plant.reproductive_energy_stored
         self.arrays['positions'][self.count] = (plant.x, plant.y)
+        # Explicitly set the initial energy in the array upon registration.
+        # This makes the array's state correct from the very first moment.
+        self.arrays['energies'][self.count] = plant.energy
 
         self.count += 1
 
