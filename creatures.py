@@ -286,7 +286,10 @@ class Plant(Creature):
             self.life_stage = "mature"
             if is_debug_focused: log.log(f"    MILESTONE ({self.id}): Seedling reached self-sufficiency and is now mature!")
 
-        # --- 5. REVISED ENERGY ALLOCATION LOGIC ---
+    def _allocate_surplus_energy(self, net_energy_production, canopy_area, root_area, core_area, world, time_step, is_debug_focused):
+        """
+        Handles the investment of surplus energy into reproduction and growth.
+        """
         # 1. Mature plants invest in creating flowers.
         if self.life_stage == "mature":
             desired_repro_investment = (C.PLANT_REPRODUCTIVE_INVESTMENT_J_PER_HOUR / C.SECONDS_PER_HOUR) * time_step
@@ -356,7 +359,7 @@ class Plant(Creature):
                 core_investment = growth_energy * C.PLANT_STABLE_CORE_INVESTMENT_RATIO
                 canopy_root_investment = growth_energy * (1.0 - C.PLANT_STABLE_CORE_INVESTMENT_RATIO)
 
-            soil_eff = self.genes.soil_efficiency.get(self.soil_type, 0) # Recalculate for allocation
+            soil_eff = self.genes.soil_efficiency.get(self.soil_type, 0)
             total_limitation = self.environment_eff + soil_eff
             if total_limitation > 0:
                 old_core_radius = self.core_radius
@@ -409,6 +412,40 @@ class Plant(Creature):
 
             elif is_debug_focused:
                 log.log(f"      - Decision: CANNOT GROW (Total limitation factor is zero).")
+
+    def _update_growing_plant(self, world, time_step, is_debug_focused):
+        """Unified logic for seedlings and mature plants."""
+        if is_debug_focused:
+            log.log(f" State ({self.life_stage}): Energy={self.energy:.2f}, ReproEnergy={self.reproductive_energy_stored:.2f}, Radius={self.radius:.2f}, Height={self.height:.2f}")
+
+        # --- 1. CORE BIOLOGY: Calculate Net Energy ---
+        net_energy_production, photosynthesis_gain, metabolism_cost, canopy_area, root_area, core_area = self._calculate_energy_balance(world, time_step, is_debug_focused)
+
+        # --- 2. Self-Pruning Logic (Energy Deficit Response) ---
+        if net_energy_production < 0:
+            energy_deficit = abs(net_energy_production)
+            net_energy_production = self._process_self_pruning(energy_deficit, canopy_area, root_area, core_area, world, time_step, is_debug_focused)
+
+        # --- 3. Update Stored Energy & Check for Starvation ---
+        self.energy += net_energy_production
+        world.plant_manager.arrays['energies'][self.index] = self.energy
+
+        if is_debug_focused:
+            log.log(f"    Energy: Gained={photosynthesis_gain:.4f}, Lost={metabolism_cost:.4f}, Net (Post-Pruning)={net_energy_production:.4f}")
+
+        if self.energy <= 0:
+            self.die(world, "starvation")
+            if is_debug_focused: log.log(f"  Plant {self.id} ({self.life_stage}) died from starvation. Final Energy: {self.energy:.2f}")
+            return
+
+        # --- 4. Update Life Stage ---
+        if not self.has_reached_self_sufficiency and net_energy_production > 0:
+            self.has_reached_self_sufficiency = True
+            self.life_stage = "mature"
+            if is_debug_focused: log.log(f"    MILESTONE ({self.id}): Seedling reached self-sufficiency and is now mature!")
+
+        # --- 5. Allocate Surplus Energy to Reproduction and Growth ---
+        self._allocate_surplus_energy(net_energy_production, canopy_area, root_area, core_area, world, time_step, is_debug_focused)
 
     def update(self, world, time_step):
         if not self.is_alive: return
