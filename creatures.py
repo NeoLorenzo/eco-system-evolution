@@ -148,94 +148,89 @@ class Plant(Creature):
         elif is_debug_focused:
             log.log(f"DEBUG ({self.id}): Seed remains dormant. Temp OK: {temp_ok} (is {self.temperature:.2f}), Humidity OK: {humidity_ok} (is {self.humidity:.2f}).")
 
-    def _update_growing_plant(self, world, time_step, is_debug_focused):
-        """Unified logic for seedlings and mature plants."""
-        if is_debug_focused:
-            log.log(f" State ({self.life_stage}): Energy={self.energy:.2f}, ReproEnergy={self.reproductive_energy_stored:.2f}, Radius={self.radius:.2f}, Height={self.height:.2f}")
-
-# --- CORE BIOLOGY LOGIC (Calculations now use time_step directly) ---
-        # The competition values (self.shaded_canopy_area, self.overlapped_root_area) are now
-        # calculated and updated globally by the World class on a fixed interval.
-        # The per-plant accumulator and call to calculate_physical_overlap have been removed.
-
+    def _calculate_energy_balance(self, world, time_step, is_debug_focused):
+        """
+        Calculates net energy production based on environmental factors and competition.
+        This includes photosynthesis, metabolism, and dynamic morphology adaptation.
+        Returns:
+            - net_energy_production (float): The net energy gain/loss for this tick, in Joules.
+            - photosynthesis_gain (float): The gross energy produced, in Joules.
+            - metabolism_cost (float): The gross energy consumed, in Joules.
+            - canopy_area (float): The calculated canopy area, in cm^2.
+            - root_area (float): The calculated root area, in cm^2.
+            - core_area (float): The calculated core area, in cm^2.
+        """
+        # --- 1. Calculate current physical state ---
         canopy_area = np.pi * self.radius**2
         root_area = np.pi * self.root_radius**2
+        core_area = np.pi * self.core_radius**2
 
+        # --- 2. Adapt morphology based on competition ---
         shade_ratio = (self.shaded_canopy_area / canopy_area) if canopy_area > 0 else 0
-
         if is_debug_focused:
             root_overlap_percent = (self.overlapped_root_area / root_area * 100) if root_area > 0 else 0
             log.log(f"    Competition: Shaded Area={self.shaded_canopy_area:.2f} ({shade_ratio*100:.1f}%), Root Overlap={self.overlapped_root_area:.2f} ({root_overlap_percent:.1f}%)")
 
-        # --- Shade Avoidance Response (Dynamic Morphology) ---
-        # The plant adjusts its shape based on how much shade it's in.
-        # It interpolates between its base shape and its max "skinny" shape.
         target_factor = C.PLANT_RADIUS_TO_HEIGHT_FACTOR + (C.PLANT_MAX_SHADE_RADIUS_TO_HEIGHT_FACTOR - C.PLANT_RADIUS_TO_HEIGHT_FACTOR) * shade_ratio
-        
-        # Slowly move the current factor towards the target factor.
         self.radius_to_height_factor += (target_factor - self.radius_to_height_factor) * C.PLANT_MORPHOLOGY_ADAPTATION_RATE
         
         if is_debug_focused and abs(target_factor - self.radius_to_height_factor) > 0.01:
             log.log(f"    Morphology: Shade Ratio={shade_ratio:.2f}. Adjusting R/H Factor from {self.radius_to_height_factor:.2f} towards {target_factor:.2f}.")
 
-        # --- Calculate root competition efficiency ---
+        # --- 3. Calculate all efficiency multipliers ---
         effective_root_area = max(0, root_area - self.overlapped_root_area)
         root_competition_eff = effective_root_area / root_area if root_area > 0 else 0
-
         max_soil_eff = self.genes.soil_efficiency.get(self.soil_type, 0)
         root_to_canopy_ratio = self.root_radius / (self.radius + 1)
         soil_eff = max_soil_eff * min(1.0, root_to_canopy_ratio * C.PLANT_ROOT_EFFICIENCY_FACTOR) * root_competition_eff
         
-        # --- Fetch the pre-calculated aging efficiency from the manager ---
         aging_efficiency = world.plant_manager.arrays['aging_efficiencies'][self.index]
-
-        # --- Fetch the pre-calculated hydraulic efficiency from the manager ---
         hydraulic_efficiency = world.plant_manager.arrays['hydraulic_efficiencies'][self.index]
         
+        # --- 4. Calculate energy gain (Photosynthesis) ---
         effective_canopy_area = max(0, canopy_area - self.shaded_canopy_area)
+        photosynthesis_gain = effective_canopy_area * C.PLANT_PHOTOSYNTHESIS_PER_AREA * self.environment_eff * soil_eff * aging_efficiency * hydraulic_efficiency * time_step 
+        
+        # --- 5. Calculate energy loss (Metabolism) ---
+        metabolism_cost_per_second = world.plant_manager.arrays['metabolism_costs_per_second'][self.index]
+        metabolism_cost = metabolism_cost_per_second * time_step
         
         if is_debug_focused:
             log.log(f"    Energy Calc: Effective Canopy={effective_canopy_area:.2f} (Total: {canopy_area:.2f})")
             log.log(f"    Efficiencies: Env={self.environment_eff:.3f}, Soil={soil_eff:.3f} (Root Comp Eff: {root_competition_eff:.3f}), Aging={aging_efficiency:.3f}, Hydraulic={hydraulic_efficiency:.3f}")
 
-        photosynthesis_gain = effective_canopy_area * C.PLANT_PHOTOSYNTHESIS_PER_AREA * self.environment_eff * soil_eff * aging_efficiency * hydraulic_efficiency * time_step 
-        
-        # Fetch the pre-calculated metabolism cost per second from the manager.
-        metabolism_cost_per_second = world.plant_manager.arrays['metabolism_costs_per_second'][self.index]
-        metabolism_cost = metabolism_cost_per_second * time_step
-        
-        # We still need core_area for the self-pruning logic, so it must be calculated here.
-        core_area = np.pi * self.core_radius**2
-        
         net_energy_production = photosynthesis_gain - metabolism_cost
+        
+        return net_energy_production, photosynthesis_gain, metabolism_cost, canopy_area, root_area, core_area
 
-        # --- Self-Pruning Logic ---
-        # If the plant has an energy deficit, it sheds biomass to reduce maintenance costs
-        # instead of just passively starving. This creates an emergent maximum size.
+    def _update_growing_plant(self, world, time_step, is_debug_focused):
+        """Unified logic for seedlings and mature plants."""
+        if is_debug_focused:
+            log.log(f" State ({self.life_stage}): Energy={self.energy:.2f}, ReproEnergy={self.reproductive_energy_stored:.2f}, Radius={self.radius:.2f}, Height={self.height:.2f}")
+
+        # --- 1. CORE BIOLOGY: Calculate Net Energy ---
+        net_energy_production, photosynthesis_gain, metabolism_cost, canopy_area, root_area, core_area = self._calculate_energy_balance(world, time_step, is_debug_focused)
+
+        # --- 2. Self-Pruning Logic (Energy Deficit Response) ---
         if net_energy_production < 0:
             energy_deficit = abs(net_energy_production)
             
-            # Calculate the total area of the plant to derive the maintenance cost per area.
             total_sheddable_area = canopy_area + root_area + core_area
-            
-            # Derive the maintenance cost per area from the pre-calculated total metabolism.
-            # This avoids re-calculating the respiration_factor.
+            metabolism_cost_per_second = world.plant_manager.arrays['metabolism_costs_per_second'][self.index]
+
             if total_sheddable_area > 0:
                 maintenance_cost_per_area_tick = (metabolism_cost_per_second / total_sheddable_area) * time_step
             else:
                 maintenance_cost_per_area_tick = 0
 
             if maintenance_cost_per_area_tick > 0:
-                # Calculate the total area of biomass that needs to be shed to offset the deficit.
                 area_to_shed = (energy_deficit / maintenance_cost_per_area_tick) * C.PLANT_PRUNING_EFFICIENCY
                 
                 if total_sheddable_area > 0:
-                    # Determine the fraction of the total area each component represents.
                     canopy_fraction = canopy_area / total_sheddable_area
                     root_fraction = root_area / total_sheddable_area
                     core_fraction = core_area / total_sheddable_area
                     
-                    # Calculate how much area to shed from each component.
                     shed_canopy_area = area_to_shed * canopy_fraction
                     shed_root_area = area_to_shed * root_fraction
                     shed_core_area = area_to_shed * core_fraction
@@ -244,7 +239,6 @@ class Plant(Creature):
                         log.log(f"    PRUNING: Energy deficit of {energy_deficit:.4f} J. Shedding {area_to_shed:.2f} cm^2 of total biomass.")
                         log.log(f"      - Old Radii: Canopy={self.radius:.2f}, Core={self.core_radius:.2f}. Shedding {shed_canopy_area:.2f} (canopy), {shed_core_area:.2f} (core) cm^2.")
 
-                    # Calculate new areas and radii for all components, ensuring they don't go below zero.
                     new_canopy_area = max(0, canopy_area - shed_canopy_area)
                     new_root_area = max(0, root_area - shed_root_area)
                     new_core_area = max(0, core_area - shed_core_area)
@@ -252,9 +246,8 @@ class Plant(Creature):
                     self.radius = np.sqrt(new_canopy_area / np.pi)
                     self.root_radius = np.sqrt(new_root_area / np.pi)
                     self.core_radius = np.sqrt(new_core_area / np.pi)
-                    self.height = self.radius * self.radius_to_height_factor # Use instance variable
+                    self.height = self.radius * self.radius_to_height_factor
 
-                    # Update all manager arrays with new pruned values
                     pm = world.plant_manager
                     pm.arrays['heights'][self.index] = self.height
                     pm.arrays['radii'][self.index] = self.radius
@@ -265,14 +258,14 @@ class Plant(Creature):
                         log.log(f"      - New Radii: Canopy={self.radius:.2f}, Core={self.core_radius:.2f}.")
 
             # By pruning, the plant has "paid" its energy deficit for this tick with biomass.
-            # We set net production to zero to prevent a "double penalty" (losing biomass AND stored energy).
+            # We set net production to zero to prevent a "double penalty".
             net_energy_production = 0
 
+        # --- 3. Update Stored Energy & Check for Starvation ---
         self.energy += net_energy_production
         world.plant_manager.arrays['energies'][self.index] = self.energy
 
         if is_debug_focused:
-            log.log(f"    Efficiencies: Env={self.environment_eff:.3f}, Soil={soil_eff:.3f}, Aging={aging_efficiency:.3f}, Hydraulic={hydraulic_efficiency:.3f}")
             log.log(f"    Energy: Gained={photosynthesis_gain:.4f}, Lost={metabolism_cost:.4f}, Net (Post-Pruning)={net_energy_production:.4f}")
 
         if self.energy <= 0:
@@ -280,12 +273,13 @@ class Plant(Creature):
             if is_debug_focused: log.log(f"  Plant {self.id} ({self.life_stage}) died from starvation. Final Energy: {self.energy:.2f}")
             return
 
+        # --- 4. Update Life Stage ---
         if not self.has_reached_self_sufficiency and net_energy_production > 0:
             self.has_reached_self_sufficiency = True
-            self.life_stage = "mature" # Transition from seedling to mature
+            self.life_stage = "mature"
             if is_debug_focused: log.log(f"    MILESTONE ({self.id}): Seedling reached self-sufficiency and is now mature!")
 
-        # --- REVISED ENERGY ALLOCATION LOGIC ---
+        # --- 5. REVISED ENERGY ALLOCATION LOGIC ---
         # 1. Mature plants invest in creating flowers.
         if self.life_stage == "mature":
             desired_repro_investment = (C.PLANT_REPRODUCTIVE_INVESTMENT_J_PER_HOUR / C.SECONDS_PER_HOUR) * time_step
@@ -299,7 +293,6 @@ class Plant(Creature):
                 self.reproductive_energy_stored += actual_repro_investment
                 pm.arrays['reproductive_energies_stored'][self.index] = self.reproductive_energy_stored
                 
-                # Check if we can create new flowers
                 num_new_flowers = int(self.reproductive_energy_stored // C.PLANT_FLOWER_ENERGY_COST)
                 max_flowers = int(canopy_area * C.PLANT_MAX_FLOWERS_PER_CANOPY_AREA)
                 allowed_new_flowers = max(0, max_flowers - len(self.reproductive_organs))
@@ -325,7 +318,6 @@ class Plant(Creature):
             self.energy -= investment_from_reserves
             world.plant_manager.arrays['energies'][self.index] = self.energy
 
-        # The energy available for growth is the net production plus any amount taken from reserves.
         growth_energy = max(0, net_energy_production) + investment_from_reserves
 
         if is_debug_focused:
@@ -333,53 +325,41 @@ class Plant(Creature):
                 log.log(f"    Allocation (Growth): Total pool {growth_energy:.4f} J available for growth.")
             else:
                 log.log(f"    Allocation: No surplus energy or reserves to invest in growth.")
-
-        # NOTE: The old reproduction check is removed from here.
-        # Dispersal is now handled in the main update method based on fruit state.
         
         if growth_energy > 0:
-            # --- REVISED DYNAMIC CORE GROWTH ALLOCATION (Two-Mode System) ---
             core_investment = 0
-            canopy_root_investment = 0 # Default to 0
+            canopy_root_investment = 0
 
-            # Avoid division by zero and check for trivial cases
             if canopy_area > 1.0:
                 current_ratio = core_area / canopy_area
                 
-                # --- MODE 1: RECOVERY ---
-                # If the plant is top-heavy, it enters recovery mode.
                 if current_ratio < C.PLANT_IDEAL_CORE_TO_CANOPY_AREA_RATIO:
                     core_investment = growth_energy
-                    # canopy_root_investment remains 0
                     if is_debug_focused:
                         log.log(f"    Allocation (Structural): RECOVERY MODE. Ratio={current_ratio:.4f} is below ideal {C.PLANT_IDEAL_CORE_TO_CANOPY_AREA_RATIO:.4f}.")
                         log.log(f"    Allocation (Structural): Investing 100% of growth energy ({growth_energy:.4f} J) into Core.")
                 
-                # --- MODE 2: NORMAL GROWTH ---
-                # If the plant is stable, it allocates growth proportionally.
                 else:
                     core_investment = growth_energy * C.PLANT_STABLE_CORE_INVESTMENT_RATIO
                     canopy_root_investment = growth_energy * (1.0 - C.PLANT_STABLE_CORE_INVESTMENT_RATIO)
                     if is_debug_focused:
                         log.log(f"    Allocation (Structural): Normal Growth. Investing {core_investment:.4f} J in Core, {canopy_root_investment:.4f} J in Canopy/Roots.")
 
-            # If canopy_area is tiny, treat as normal growth to get started.
             else:
                 core_investment = growth_energy * C.PLANT_STABLE_CORE_INVESTMENT_RATIO
                 canopy_root_investment = growth_energy * (1.0 - C.PLANT_STABLE_CORE_INVESTMENT_RATIO)
 
+            soil_eff = self.genes.soil_efficiency.get(self.soil_type, 0) # Recalculate for allocation
             total_limitation = self.environment_eff + soil_eff
             if total_limitation > 0:
                 old_core_radius = self.core_radius
 
-                # 1. Grow the Core
                 if core_investment > 0:
                     added_core_area = core_investment / C.PLANT_CORE_BIOMASS_ENERGY_COST
                     new_core_area = (np.pi * self.core_radius**2) + added_core_area
                     self.core_radius = np.sqrt(new_core_area / np.pi)
                     world.plant_manager.arrays['core_radii'][self.index] = self.core_radius
 
-                # 2. Grow Canopy and Roots with remaining energy
                 if canopy_root_investment > 0:
                     added_biomass_area = canopy_root_investment / C.PLANT_BIOMASS_ENERGY_COST
                     canopy_alloc_factor = soil_eff / total_limitation
@@ -395,17 +375,15 @@ class Plant(Creature):
                     self.root_radius = np.sqrt(new_root_area / np.pi)
                     world.plant_manager.arrays['root_radii'][self.index] = self.root_radius
 
-                    self.height = self.radius * self.radius_to_height_factor # Use instance variable
+                    self.height = self.radius * self.radius_to_height_factor
                     world.plant_manager.arrays['heights'][self.index] = self.height
                 
                 if is_debug_focused:
                     log.log(f"      - Growth: New Radius={self.radius:.2f}, New Core Radius={self.core_radius:.2f}")
 
-                # --- OPTIMIZATION: Crush check is now throttled by a growth threshold ---
                 if self.core_radius > old_core_radius:
                     self.core_growth_since_crush_check += self.core_radius - old_core_radius
                     
-                    # Only run the expensive query if significant growth has occurred.
                     if self.core_growth_since_crush_check >= C.PLANT_CRUSH_CHECK_GROWTH_THRESHOLD_CM:
                         search_area = Rectangle(self.x, self.y, self.core_radius, self.core_radius)
                         neighbors = world.quadtree.query(search_area, [])
@@ -413,7 +391,6 @@ class Plant(Creature):
                             if neighbor is self or not isinstance(neighbor, Plant) or not neighbor.is_alive:
                                 continue
                             
-                            # The check is now purely physical: does my core overlap their center?
                             dist_sq = (self.x - neighbor.x)**2 + (self.y - neighbor.y)**2
                             if dist_sq < self.core_radius**2:
                                 neighbor_is_debug_focused = (world.debug_focused_creature_id == neighbor.id)
@@ -421,7 +398,6 @@ class Plant(Creature):
                                     log.log(f"DEATH ({neighbor.id}): Crushed by the growing core of Plant ID {self.id}.")
                                 neighbor.die(world, "core_crush")
                         
-                        # Reset the accumulator after the check.
                         self.core_growth_since_crush_check = 0.0
 
             elif is_debug_focused:
