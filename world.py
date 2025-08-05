@@ -367,6 +367,7 @@ class World:
         # --- Perform vectorized calculations once before the main loop ---
         self.plant_manager.update_aging_efficiencies()
         self.plant_manager.update_hydraulic_efficiencies()
+        self.plant_manager.update_environmental_efficiencies(self.environment)
         log.log("Performing bulk metabolism calculation for all plants...")
         self.plant_manager.update_metabolism_costs(self.environment)
 
