@@ -143,6 +143,19 @@ class Plant(Creature):
                 pm.arrays['radii'][self.index] = self.radius
                 pm.arrays['root_radii'][self.index] = self.root_radius
                 pm.arrays['core_radii'][self.index] = self.core_radius
+
+                # --- BUG FIX: Manually calculate and patch the initial soil efficiency ---
+                # The bulk calculation ran when this was a seed (radius 0), resulting in a stale
+                # efficiency of 0. We must calculate the correct value for the new seedling state
+                # and insert it into the array to prevent immediate starvation.
+                max_soil_eff = self.genes.soil_efficiency.get(self.soil_type, 0)
+                root_to_canopy_ratio = self.root_radius / (self.radius + 1)
+                # At sprouting, there is no root competition.
+                initial_soil_eff = max_soil_eff * min(1.0, root_to_canopy_ratio * C.PLANT_ROOT_EFFICIENCY_FACTOR) * 1.0
+                pm.arrays['soil_efficiencies'][self.index] = initial_soil_eff
+                if is_debug_focused:
+                    log.log(f"DEBUG ({self.id}): Sprouted! Patched initial soil efficiency to {initial_soil_eff:.3f}.")
+
             elif is_debug_focused:
                 log.log(f"DEBUG ({self.id}): Conditions met to sprout, but not enough energy ({self.energy:.2f} < {C.PLANT_SPROUTING_ENERGY_COST}).")
         elif is_debug_focused:
@@ -178,12 +191,8 @@ class Plant(Creature):
             log.log(f"    Morphology: Shade Ratio={shade_ratio:.2f}. Adjusting R/H Factor from {self.radius_to_height_factor:.2f} towards {target_factor:.2f}.")
 
         # --- 3. Calculate all efficiency multipliers ---
-        effective_root_area = max(0, root_area - self.overlapped_root_area)
-        root_competition_eff = effective_root_area / root_area if root_area > 0 else 0
-        max_soil_eff = self.genes.soil_efficiency.get(self.soil_type, 0)
-        root_to_canopy_ratio = self.root_radius / (self.radius + 1)
-        soil_eff = max_soil_eff * min(1.0, root_to_canopy_ratio * C.PLANT_ROOT_EFFICIENCY_FACTOR) * root_competition_eff
-        
+        # Get pre-calculated efficiencies from the PlantManager's NumPy arrays.
+        soil_eff = world.plant_manager.arrays['soil_efficiencies'][self.index]
         aging_efficiency = world.plant_manager.arrays['aging_efficiencies'][self.index]
         hydraulic_efficiency = world.plant_manager.arrays['hydraulic_efficiencies'][self.index]
         
@@ -330,7 +339,7 @@ class Plant(Creature):
                 core_investment = growth_energy * C.PLANT_STABLE_CORE_INVESTMENT_RATIO
                 canopy_root_investment = growth_energy * (1.0 - C.PLANT_STABLE_CORE_INVESTMENT_RATIO)
 
-            soil_eff = self.genes.soil_efficiency.get(self.soil_type, 0)
+            soil_eff = world.plant_manager.arrays['soil_efficiencies'][self.index]
             environmental_efficiency = world.plant_manager.arrays['environmental_efficiencies'][self.index]
             total_limitation = environmental_efficiency + soil_eff
             if total_limitation > 0:
