@@ -553,9 +553,9 @@ class Plant(Creature):
         return False
 
     def calculate_environment_efficiency(self, temperature, humidity):
-        temp_diff = abs(temperature - self.genes.optimal_temperature)
+        temp_diff = np.abs(temperature - self.genes.optimal_temperature)
         temp_eff = np.exp(-((temp_diff / self.genes.temperature_tolerance)**2))
-        hum_diff = abs(humidity - self.genes.optimal_humidity)
+        hum_diff = np.abs(humidity - self.genes.optimal_humidity)
         hum_eff = np.exp(-((hum_diff / self.genes.humidity_tolerance)**2))
         return temp_eff * hum_eff
 
