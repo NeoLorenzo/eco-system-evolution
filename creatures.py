@@ -203,6 +203,58 @@ class Plant(Creature):
         
         return net_energy_production, photosynthesis_gain, metabolism_cost, canopy_area, root_area, core_area
 
+    def _process_self_pruning(self, energy_deficit, canopy_area, root_area, core_area, world, time_step, is_debug_focused):
+        """
+        Handles the shedding of biomass when a plant has an energy deficit.
+        This reduces the plant's size to lower its metabolic costs.
+        Returns the new net_energy_production, which is always 0 after pruning.
+        """
+        total_sheddable_area = canopy_area + root_area + core_area
+        metabolism_cost_per_second = world.plant_manager.arrays['metabolism_costs_per_second'][self.index]
+
+        if total_sheddable_area > 0:
+            maintenance_cost_per_area_tick = (metabolism_cost_per_second / total_sheddable_area) * time_step
+        else:
+            maintenance_cost_per_area_tick = 0
+
+        if maintenance_cost_per_area_tick > 0:
+            area_to_shed = (energy_deficit / maintenance_cost_per_area_tick) * C.PLANT_PRUNING_EFFICIENCY
+            
+            if total_sheddable_area > 0:
+                canopy_fraction = canopy_area / total_sheddable_area
+                root_fraction = root_area / total_sheddable_area
+                core_fraction = core_area / total_sheddable_area
+                
+                shed_canopy_area = area_to_shed * canopy_fraction
+                shed_root_area = area_to_shed * root_fraction
+                shed_core_area = area_to_shed * core_fraction
+
+                if is_debug_focused:
+                    log.log(f"    PRUNING: Energy deficit of {energy_deficit:.4f} J. Shedding {area_to_shed:.2f} cm^2 of total biomass.")
+                    log.log(f"      - Old Radii: Canopy={self.radius:.2f}, Core={self.core_radius:.2f}. Shedding {shed_canopy_area:.2f} (canopy), {shed_core_area:.2f} (core) cm^2.")
+
+                new_canopy_area = max(0, canopy_area - shed_canopy_area)
+                new_root_area = max(0, root_area - shed_root_area)
+                new_core_area = max(0, core_area - shed_core_area)
+                
+                self.radius = np.sqrt(new_canopy_area / np.pi)
+                self.root_radius = np.sqrt(new_root_area / np.pi)
+                self.core_radius = np.sqrt(new_core_area / np.pi)
+                self.height = self.radius * self.radius_to_height_factor
+
+                pm = world.plant_manager
+                pm.arrays['heights'][self.index] = self.height
+                pm.arrays['radii'][self.index] = self.radius
+                pm.arrays['root_radii'][self.index] = self.root_radius
+                pm.arrays['core_radii'][self.index] = self.core_radius
+
+                if is_debug_focused:
+                    log.log(f"      - New Radii: Canopy={self.radius:.2f}, Core={self.core_radius:.2f}.")
+
+        # By pruning, the plant has "paid" its energy deficit for this tick with biomass.
+        # We return 0 to prevent a "double penalty" (losing biomass AND stored energy).
+        return 0
+
     def _update_growing_plant(self, world, time_step, is_debug_focused):
         """Unified logic for seedlings and mature plants."""
         if is_debug_focused:
@@ -214,52 +266,7 @@ class Plant(Creature):
         # --- 2. Self-Pruning Logic (Energy Deficit Response) ---
         if net_energy_production < 0:
             energy_deficit = abs(net_energy_production)
-            
-            total_sheddable_area = canopy_area + root_area + core_area
-            metabolism_cost_per_second = world.plant_manager.arrays['metabolism_costs_per_second'][self.index]
-
-            if total_sheddable_area > 0:
-                maintenance_cost_per_area_tick = (metabolism_cost_per_second / total_sheddable_area) * time_step
-            else:
-                maintenance_cost_per_area_tick = 0
-
-            if maintenance_cost_per_area_tick > 0:
-                area_to_shed = (energy_deficit / maintenance_cost_per_area_tick) * C.PLANT_PRUNING_EFFICIENCY
-                
-                if total_sheddable_area > 0:
-                    canopy_fraction = canopy_area / total_sheddable_area
-                    root_fraction = root_area / total_sheddable_area
-                    core_fraction = core_area / total_sheddable_area
-                    
-                    shed_canopy_area = area_to_shed * canopy_fraction
-                    shed_root_area = area_to_shed * root_fraction
-                    shed_core_area = area_to_shed * core_fraction
-
-                    if is_debug_focused:
-                        log.log(f"    PRUNING: Energy deficit of {energy_deficit:.4f} J. Shedding {area_to_shed:.2f} cm^2 of total biomass.")
-                        log.log(f"      - Old Radii: Canopy={self.radius:.2f}, Core={self.core_radius:.2f}. Shedding {shed_canopy_area:.2f} (canopy), {shed_core_area:.2f} (core) cm^2.")
-
-                    new_canopy_area = max(0, canopy_area - shed_canopy_area)
-                    new_root_area = max(0, root_area - shed_root_area)
-                    new_core_area = max(0, core_area - shed_core_area)
-                    
-                    self.radius = np.sqrt(new_canopy_area / np.pi)
-                    self.root_radius = np.sqrt(new_root_area / np.pi)
-                    self.core_radius = np.sqrt(new_core_area / np.pi)
-                    self.height = self.radius * self.radius_to_height_factor
-
-                    pm = world.plant_manager
-                    pm.arrays['heights'][self.index] = self.height
-                    pm.arrays['radii'][self.index] = self.radius
-                    pm.arrays['root_radii'][self.index] = self.root_radius
-                    pm.arrays['core_radii'][self.index] = self.core_radius
-
-                    if is_debug_focused:
-                        log.log(f"      - New Radii: Canopy={self.radius:.2f}, Core={self.core_radius:.2f}.")
-
-            # By pruning, the plant has "paid" its energy deficit for this tick with biomass.
-            # We set net production to zero to prevent a "double penalty".
-            net_energy_production = 0
+            net_energy_production = self._process_self_pruning(energy_deficit, canopy_area, root_area, core_area, world, time_step, is_debug_focused)
 
         # --- 3. Update Stored Energy & Check for Starvation ---
         self.energy += net_energy_production
