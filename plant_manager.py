@@ -3,6 +3,14 @@ import numpy as np
 import constants as C
 import logger as log
 
+def calculate_environment_efficiency(temperature, humidity, genes):
+    """Calculates environmental efficiency based on temperature and humidity."""
+    temp_diff = np.abs(temperature - genes.optimal_temperature)
+    temp_eff = np.exp(-((temp_diff / genes.temperature_tolerance)**2))
+    hum_diff = np.abs(humidity - genes.optimal_humidity)
+    hum_eff = np.exp(-((hum_diff / genes.humidity_tolerance)**2))
+    return temp_eff * hum_eff
+
 class PlantManager:
     """
     A dedicated class to manage all plant-related data and operations.

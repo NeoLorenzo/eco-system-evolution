@@ -7,6 +7,7 @@ import numpy as np
 from quadtree import Rectangle
 from genes import PlantGenes
 import logger as log
+from plant_manager import calculate_environment_efficiency as calculate_env_eff_vectorized
 
 def lerp_color(c1, c2, t):
     t = max(0, min(1, t))
@@ -553,11 +554,7 @@ class Plant(Creature):
         return False
 
     def calculate_environment_efficiency(self, temperature, humidity):
-        temp_diff = np.abs(temperature - self.genes.optimal_temperature)
-        temp_eff = np.exp(-((temp_diff / self.genes.temperature_tolerance)**2))
-        hum_diff = np.abs(humidity - self.genes.optimal_humidity)
-        hum_eff = np.exp(-((hum_diff / self.genes.humidity_tolerance)**2))
-        return temp_eff * hum_eff
+        return calculate_env_eff_vectorized(temperature, humidity, self.genes)
 
     def draw(self, screen, camera):
         screen_pos = camera.world_to_screen(self.x, self.y)
