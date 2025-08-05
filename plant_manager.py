@@ -26,6 +26,7 @@ class PlantManager:
             'aging_efficiencies': np.ones(initial_capacity, dtype=np.float32),
             'hydraulic_efficiencies': np.ones(initial_capacity, dtype=np.float32),
             'metabolism_costs_per_second': np.zeros(initial_capacity, dtype=np.float32),
+            'canopy_areas': np.zeros(initial_capacity, dtype=np.float32), # Caches the result of pi * r^2
         }
 
     def add_plant(self, plant):
@@ -99,6 +100,7 @@ class PlantManager:
 
         # Perform calculations for ALL plants at once
         canopy_areas = np.pi * radii**2
+        self.arrays['canopy_areas'][:self.count] = canopy_areas # Cache the result
         root_areas = np.pi * root_radii**2
         core_areas = np.pi * core_radii**2
         total_areas = canopy_areas + root_areas + core_areas
@@ -121,7 +123,7 @@ class PlantManager:
         Current arrays to swap:
         - ages, heights, radii, root_radii, core_radii, energies,
         - reproductive_energies_stored, positions, aging_efficiencies,
-        - hydraulic_efficiencies, metabolism_costs_per_second
+        - hydraulic_efficiencies, metabolism_costs_per_second, canopy_areas
         """
         if plant_to_remove.index >= self.count or self.plants[plant_to_remove.index] is not plant_to_remove:
             log.log(f"ERROR: Attempted to remove a plant with an invalid index or mismatched object. Index: {plant_to_remove.index}")
