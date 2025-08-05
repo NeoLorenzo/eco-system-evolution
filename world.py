@@ -283,7 +283,7 @@ class World:
             num_shaded_cells = np.sum(shaded_cells_mask)
             plant.shaded_canopy_area = num_shaded_cells * cell_area
 
-            # --- Calculate Root Overlap ---
+            # --- Calculate Root Overlap (Vectorized) ---
             min_gx_root = int(max(0, (x - root_radius) / C.LIGHT_GRID_CELL_SIZE_CM))
             max_gx_root = int(min(self.root_grid.shape[0] - 1, (x + root_radius) / C.LIGHT_GRID_CELL_SIZE_CM))
             min_gy_root = int(max(0, (y - root_radius) / C.LIGHT_GRID_CELL_SIZE_CM))
@@ -291,17 +291,35 @@ class World:
 
             my_root_area = root_radius**2 * np.pi
 
-            for gx in range(min_gx_root, max_gx_root + 1):
-                for gy in range(min_gy_root, max_gy_root + 1):
-                    cell_wx = (gx + 0.5) * C.LIGHT_GRID_CELL_SIZE_CM
-                    cell_wy = (gy + 0.5) * C.LIGHT_GRID_CELL_SIZE_CM
-                    dist_sq = (x - cell_wx)**2 + (y - cell_wy)**2
-                    if dist_sq <= root_radius**2:
-                        total_pressure = self.root_grid[gx, gy]
-                        if total_pressure > root_radius:
-                            # Ratio of competition is how much pressure is NOT from this plant
-                            overlap_ratio = (total_pressure - root_radius) / total_pressure
-                            plant.overlapped_root_area += cell_area * overlap_ratio
+            # Create a grid of coordinates for the bounding box of the roots
+            gx_range_root = np.arange(min_gx_root, max_gx_root + 1)
+            gy_range_root = np.arange(min_gy_root, max_gy_root + 1)
+            gx_grid_root, gy_grid_root = np.meshgrid(gx_range_root, gy_range_root)
+
+            # Calculate the world coordinates of the center of each grid cell
+            cell_wx_root = (gx_grid_root + 0.5) * C.LIGHT_GRID_CELL_SIZE_CM
+            cell_wy_root = (gy_grid_root + 0.5) * C.LIGHT_GRID_CELL_SIZE_CM
+
+            # Find all cells within the plant's root radius
+            dist_sq_root = (x - cell_wx_root)**2 + (y - cell_wy_root)**2
+            cells_inside_roots_mask = dist_sq_root <= root_radius**2
+
+            # Get the grid indices where the condition is true
+            gx_indices_root = gx_grid_root[cells_inside_roots_mask]
+            gy_indices_root = gy_grid_root[cells_inside_roots_mask]
+
+            # Get the total root pressure from the grid for all cells under this plant's roots
+            total_pressures = self.root_grid[gx_indices_root, gy_indices_root]
+
+            # Find which of these cells are actually being competed for
+            competed_cells_mask = total_pressures > root_radius
+
+            # Calculate the overlap ratio ONLY for the cells with competition
+            competed_pressures = total_pressures[competed_cells_mask]
+            overlap_ratios = (competed_pressures - root_radius) / competed_pressures
+
+            # The total overlapped area is the sum of the ratios multiplied by the area of a cell
+            plant.overlapped_root_area = np.sum(overlap_ratios) * cell_area
             
             # Clamp values to be safe
             plant.shaded_canopy_area = min(plant.shaded_canopy_area, radius**2 * np.pi)
