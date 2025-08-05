@@ -7,7 +7,6 @@ import numpy as np
 from quadtree import Rectangle
 from genes import PlantGenes
 import logger as log
-from plant_manager import calculate_environment_efficiency as calculate_env_eff_vectorized
 
 def lerp_color(c1, c2, t):
     t = max(0, min(1, t))
@@ -101,7 +100,7 @@ class Plant(Creature):
 
         self.temperature = world.environment.get_temperature(self.x, self.y)
         self.humidity = world.environment.get_humidity(self.x, self.y)
-        self.environment_eff = self.calculate_environment_efficiency(self.temperature, self.humidity)
+        # self.environment_eff is now removed. The value is calculated in bulk by PlantManager.
 
     def get_personal_space_radius(self):
         return self.core_radius * C.PLANT_CORE_PERSONAL_SPACE_FACTOR
@@ -198,8 +197,9 @@ class Plant(Creature):
         metabolism_cost = metabolism_cost_per_second * time_step
         
         if is_debug_focused:
+            environmental_efficiency = world.plant_manager.arrays['environmental_efficiencies'][self.index]
             log.log(f"    Energy Calc: Effective Canopy={effective_canopy_area:.2f} (Total: {canopy_area:.2f})")
-            log.log(f"    Efficiencies: Env={self.environment_eff:.3f}, Soil={soil_eff:.3f} (Root Comp Eff: {root_competition_eff:.3f}), Aging={aging_efficiency:.3f}, Hydraulic={hydraulic_efficiency:.3f}")
+            log.log(f"    Efficiencies: Env={environmental_efficiency:.3f}, Soil={soil_eff:.3f} (Root Comp Eff: {root_competition_eff:.3f}), Aging={aging_efficiency:.3f}, Hydraulic={hydraulic_efficiency:.3f}")
 
         net_energy_production = photosynthesis_gain - metabolism_cost
         
@@ -331,7 +331,8 @@ class Plant(Creature):
                 canopy_root_investment = growth_energy * (1.0 - C.PLANT_STABLE_CORE_INVESTMENT_RATIO)
 
             soil_eff = self.genes.soil_efficiency.get(self.soil_type, 0)
-            total_limitation = self.environment_eff + soil_eff
+            environmental_efficiency = world.plant_manager.arrays['environmental_efficiencies'][self.index]
+            total_limitation = environmental_efficiency + soil_eff
             if total_limitation > 0:
                 old_core_radius = self.core_radius
 
@@ -344,7 +345,7 @@ class Plant(Creature):
                 if canopy_root_investment > 0:
                     added_biomass_area = canopy_root_investment / C.PLANT_BIOMASS_ENERGY_COST
                     canopy_alloc_factor = soil_eff / total_limitation
-                    root_alloc_factor = self.environment_eff / total_limitation
+                    root_alloc_factor = environmental_efficiency / total_limitation
                     added_canopy_area = added_biomass_area * canopy_alloc_factor
                     added_root_area = added_biomass_area * root_alloc_factor
                     
@@ -548,14 +549,6 @@ class Plant(Creature):
         # 5. Create the new seed if the location is valid
         if is_debug_focused: log.log(f"      - Dispersal SUCCESS: Creating new seed.")
         return Plant(world, final_x, final_y, initial_energy=C.PLANT_SEED_PROVISIONING_ENERGY)
-
-    def can_reproduce(self):
-        # This method is now effectively deprecated and replaced by the fruit-dropping mechanism.
-        # It can be removed or left for future animal-specific logic.
-        return False
-
-    def calculate_environment_efficiency(self, temperature, humidity):
-        return calculate_env_eff_vectorized(temperature, humidity, self.genes)
 
     def draw(self, screen, camera):
         screen_pos = camera.world_to_screen(self.x, self.y)
