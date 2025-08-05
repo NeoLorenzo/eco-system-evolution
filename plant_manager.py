@@ -35,6 +35,7 @@ class PlantManager:
             'aging_efficiencies': np.ones(initial_capacity, dtype=np.float32),
             'hydraulic_efficiencies': np.ones(initial_capacity, dtype=np.float32),
             'environmental_efficiencies': np.ones(initial_capacity, dtype=np.float32),
+            'soil_efficiencies': np.ones(initial_capacity, dtype=np.float32),
             'metabolism_costs_per_second': np.zeros(initial_capacity, dtype=np.float32),
             'canopy_areas': np.zeros(initial_capacity, dtype=np.float32), # Caches the result of pi * r^2
         }
@@ -108,7 +109,7 @@ class PlantManager:
         y_coords = positions[:, 1]
 
         temperatures = environment.get_temperatures_vectorized(x_coords, y_coords)
-        humidities = environment.get_humidities_vectorized(x_coords, y_coords) # NOTE: We will need to create this method next.
+        humidities = environment.get_humidities_vectorized(x_coords, y_coords)
 
         # This is a placeholder for gene data. For now, we assume all plants have the same genes.
         # This will need to be refactored later when genetics become variable.
@@ -121,6 +122,37 @@ class PlantManager:
         hum_eff = np.exp(-((hum_diff / temp_genes.humidity_tolerance)**2))
         
         self.arrays['environmental_efficiencies'][:self.count] = temp_eff * hum_eff
+
+    def update_soil_efficiencies(self):
+        """
+        Calculates soil nutrient uptake efficiency for ALL plants in a single vectorized operation.
+        """
+        if self.count == 0: return
+
+        # Get slices of the arrays for all living plants
+        live_indices = slice(0, self.count)
+        soil_ids = self.arrays['soil_type_ids'][live_indices]
+        radii = self.arrays['radii'][live_indices]
+        root_radii = self.arrays['root_radii'][live_indices]
+
+        # --- Step 1: Get the base efficiency from the soil type ---
+        # This is a fast, vectorized lookup. It uses the array of soil_ids
+        # to grab the corresponding efficiency value from the constants array.
+        max_soil_effs = C.PLANT_SOIL_ID_TO_EFFICIENCY[soil_ids]
+
+        # --- Step 2: Calculate the root-to-canopy ratio modifier ---
+        # We add 1 to the radius to avoid division by zero for new seedlings.
+        root_to_canopy_ratios = root_radii / (radii + 1)
+        ratio_modifier = np.minimum(1.0, root_to_canopy_ratios * C.PLANT_ROOT_EFFICIENCY_FACTOR)
+
+        # --- Step 3: Combine factors ---
+        # For now, we assume root_competition_eff is 1.0. We will incorporate the
+        # real competition values when we vectorize the competition calculation itself.
+        root_competition_eff = 1.0 # Placeholder
+        final_soil_eff = max_soil_effs * ratio_modifier * root_competition_eff
+
+        # Store the final results back into the main array
+        self.arrays['soil_efficiencies'][live_indices] = final_soil_eff
 
     def update_metabolism_costs(self, environment):
         """
