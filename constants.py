@@ -377,7 +377,7 @@ PLANT_SOIL_ID_TO_EFFICIENCY = np.array(_efficiency_list, dtype=np.float32)
 # time for senescence. It defines the age at which a plant's metabolic
 # efficiency drops to ~37% (1/e) of its peak. It's a measure of how
 # quickly the plant ages, not a hard limit on how long it can live.
-PLANT_SENESCENCE_TIMESCALE_SECONDS = 252288000.0 # (Represents a characteristic time of 10 years)
+PLANT_SENESCENCE_TIMESCALE_SECONDS = 3155760000.0 # (Represents a characteristic time of 100 years)
 
 PLANT_COMPETITION_MASS_FACTOR = 0.001
 
