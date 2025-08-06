@@ -145,7 +145,7 @@ PLANT_PHOTOSYNTHESIS_PER_AREA = (SOLAR_IRRADIANCE_W_PER_M2 * PHOTOSYNTHETIC_EFFI
 # The base rate of energy consumption for maintenance respiration at the reference temperature.
 # This is based on the total 2D area of the plant's canopy and roots.
 # Units: J/s/cm^2 (Joules per second per square centimeter of total biomass area)
-PLANT_BASE_MAINTENANCE_RESPIRATION_PER_AREA = 0.00075
+PLANT_BASE_MAINTENANCE_RESPIRATION_PER_AREA = 0.000375
 
 # The Q10 temperature coefficient for respiration. A value of 2.0 means the rate
 # doubles for every 10°C increase in temperature.
