@@ -88,6 +88,7 @@ class Plant(Creature):
         self.shaded_canopy_area = 0.0 # The area of our canopy shaded by neighbors, in cm^2
         self.overlapped_root_area = 0.0 # The area of our roots competing with neighbors, in cm^2
         self.core_growth_since_crush_check = 0.0 # Accumulated core radius growth for crush check, in cm
+        self.last_graph_log_time = -1.0 # The sim time of the last data log for graphing.
 
         self.elevation = world.environment.get_elevation(self.x, self.y)  # Cached elevation, unitless [0, 1]
         self.soil_type = self.get_soil_type(self.elevation)  # Type of soil at location (e.g., "sand", "grass")
@@ -408,8 +409,16 @@ class Plant(Creature):
         # --- 1. CORE BIOLOGY: Calculate Net Energy ---
         net_energy_production, photosynthesis_gain, metabolism_cost, canopy_area, root_area, core_area = self._calculate_energy_balance(world, time_step, is_debug_focused)
 
-        # --- 2. Branch Logic: Handle Energy Deficit OR Surplus ---
+        # --- 2. Graphing Data Collection ---
+        if is_debug_focused and world.time_manager.total_sim_seconds >= self.last_graph_log_time + C.GRAPHING_DATA_LOG_INTERVAL_SECONDS:
+            # We log the net energy per hour for better readability on the graph
+            net_energy_per_hour = net_energy_production / (time_step / C.SECONDS_PER_HOUR)
+            world.graphing_manager.add_data_point(world.time_manager.total_sim_seconds, net_energy_per_hour)
+            self.last_graph_log_time = world.time_manager.total_sim_seconds
+
+        # --- 3. Branch Logic: Handle Energy Deficit OR Surplus ---
         if net_energy_production < 0:
+            
             # --- STATE: ENERGY DEFICIT ---
             # A plant with a deficit has two options:
             # 1. Use its stored energy reserves (the "grace period" for seedlings).

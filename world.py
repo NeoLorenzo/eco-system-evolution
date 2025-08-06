@@ -10,6 +10,7 @@ from ui import draw_loading_screen
 from quadtree import QuadTree, Rectangle
 from time_manager import TimeManager
 from plant_manager import PlantManager
+from graphing_manager import GraphingManager
 import logger as log
 
 class World:
@@ -18,6 +19,7 @@ class World:
         self.camera = Camera()
         self.environment = Environment()
         self.plant_manager = PlantManager()
+        self.graphing_manager = GraphingManager()
         self.animals = []
         self.newborns = []
         self.graveyard = []
@@ -462,9 +464,11 @@ class World:
                 
                 if self.debug_focused_creature_id == plant.id:
                     self.debug_focused_creature_id = None
+                    self.graphing_manager.clear_focus()
                     log.log(f"DEBUG: Stopped focusing on Plant ID: {plant.id}. Detailed logs disabled.")
                 else:
                     self.debug_focused_creature_id = plant.id
+                    self.graphing_manager.set_focused_plant(plant.id)
                     log.log(f"DEBUG: Now focusing on Plant ID: {plant.id}. Detailed logs enabled.")
                 return
             

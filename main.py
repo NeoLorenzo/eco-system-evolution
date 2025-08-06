@@ -19,10 +19,9 @@ def initialize_simulation():
     logger.log("Display surface and font created.")
     return screen, font
 
-def run_simulation():
+def run_simulation(world):
     screen, font = initialize_simulation()
     clock = pygame.time.Clock()
-    world = World()
     logger.set_time_manager(world.time_manager)
     world.populate_world()
     world.pre_generate_all_chunks(screen, font)
@@ -83,7 +82,13 @@ def shutdown_simulation():
 
 def main():
     logger.log("--- Simulation Start ---")
-    run_simulation()
+    world = World()
+    run_simulation(world)
+    
+    # --- Post-simulation analysis ---
+    if world.graphing_manager.has_data():
+        world.graphing_manager.generate_and_save_graph()
+
     shutdown_simulation()
     logger.log("--- Simulation Exit ---")
 
