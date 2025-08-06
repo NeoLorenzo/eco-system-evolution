@@ -112,6 +112,64 @@ class Plant(Creature):
         elif C.TERRAIN_GRASS_LEVEL <= elevation < C.TERRAIN_DIRT_LEVEL: return "dirt"
         else: return None
 
+    def _patch_all_rates_after_sprout(self, world):
+        """
+        Calculates all vital rates for this plant immediately after sprouting
+        and patches them into the PlantManager's NumPy arrays. This overcomes
+        the issue of using stale data from the last bulk update.
+        """
+        pm = world.plant_manager
+        idx = self.index
+
+        # 1. Aging Efficiency
+        pm.arrays['aging_efficiencies'][idx] = np.exp(-(self.age / C.PLANT_SENESCENCE_TIMESCALE_SECONDS))
+
+        # 2. Hydraulic Efficiency
+        pm.arrays['hydraulic_efficiencies'][idx] = np.exp(-(self.height / C.PLANT_MAX_HYDRAULIC_HEIGHT_CM))
+
+        # 3. Environmental Efficiency
+        temp = self.temperature # Already cached on the plant object
+        hum = self.humidity   # Already cached on the plant object
+        temp_diff = np.abs(temp - self.genes.optimal_temperature)
+        temp_eff = np.exp(-((temp_diff / self.genes.temperature_tolerance)**2))
+        hum_diff = np.abs(hum - self.genes.optimal_humidity)
+        hum_eff = np.exp(-((hum_diff / self.genes.humidity_tolerance)**2))
+        environmental_efficiency = temp_eff * hum_eff
+        pm.arrays['environmental_efficiencies'][idx] = environmental_efficiency
+
+        # 4. Soil Efficiency (replaces the old, single patch)
+        max_soil_eff = self.genes.soil_efficiency.get(self.soil_type, 0)
+        root_to_canopy_ratio = self.root_radius / (self.radius + 1)
+        ratio_modifier = min(1.0, root_to_canopy_ratio * C.PLANT_ROOT_EFFICIENCY_FACTOR)
+        # At sprouting, there is no root competition.
+        root_competition_eff = 1.0
+        soil_efficiency = max_soil_eff * ratio_modifier * root_competition_eff
+        pm.arrays['soil_efficiencies'][idx] = soil_efficiency
+
+        # 5. Metabolism Cost
+        canopy_area = np.pi * self.radius**2
+        root_area = np.pi * self.root_radius**2
+        core_area = np.pi * self.core_radius**2
+        total_area = canopy_area + root_area + core_area
+        temp_difference = temp - C.PLANT_RESPIRATION_REFERENCE_TEMP
+        respiration_factor = C.PLANT_Q10_FACTOR ** (temp_difference / C.PLANT_Q10_INTERVAL_DIVISOR)
+        metabolism_cost_per_second = total_area * C.PLANT_BASE_MAINTENANCE_RESPIRATION_PER_AREA * respiration_factor
+        pm.arrays['metabolism_costs_per_second'][idx] = metabolism_cost_per_second
+        pm.arrays['canopy_areas'][idx] = canopy_area # Also patch the cached canopy area
+
+        # 6. Photosynthesis Gain
+        # At sprouting, there is no shade.
+        effective_canopy_area = canopy_area
+        aging_efficiency = pm.arrays['aging_efficiencies'][idx]
+        hydraulic_efficiency = pm.arrays['hydraulic_efficiencies'][idx]
+        photosynthesis_gain_per_second = (effective_canopy_area *
+                                          C.PLANT_PHOTOSYNTHESIS_PER_AREA *
+                                          environmental_efficiency *
+                                          soil_efficiency *
+                                          aging_efficiency *
+                                          hydraulic_efficiency)
+        pm.arrays['photosynthesis_gains_per_second'][idx] = photosynthesis_gain_per_second
+
     def _update_seed(self, world, time_step, is_debug_focused):
         """Logic for when the plant is a dormant seed."""
         pm = world.plant_manager
@@ -145,17 +203,13 @@ class Plant(Creature):
                 pm.arrays['root_radii'][self.index] = self.root_radius
                 pm.arrays['core_radii'][self.index] = self.core_radius
 
-                # --- BUG FIX: Manually calculate and patch the initial soil efficiency ---
-                # The bulk calculation ran when this was a seed (radius 0), resulting in a stale
-                # efficiency of 0. We must calculate the correct value for the new seedling state
-                # and insert it into the array to prevent immediate starvation.
-                max_soil_eff = self.genes.soil_efficiency.get(self.soil_type, 0)
-                root_to_canopy_ratio = self.root_radius / (self.radius + 1)
-                # At sprouting, there is no root competition.
-                initial_soil_eff = max_soil_eff * min(1.0, root_to_canopy_ratio * C.PLANT_ROOT_EFFICIENCY_FACTOR) * 1.0
-                pm.arrays['soil_efficiencies'][self.index] = initial_soil_eff
+                # --- NEW COMPREHENSIVE PATCH ---
+                # Immediately calculate and patch all vital rates for the new seedling
+                # to prevent it from using stale (zero) data from the last bulk update.
+                self._patch_all_rates_after_sprout(world)
+
                 if is_debug_focused:
-                    log.log(f"DEBUG ({self.id}): Sprouted! Patched initial soil efficiency to {initial_soil_eff:.3f}.")
+                    log.log(f"DEBUG ({self.id}): Sprouted! Patched all initial rates to prevent observer effect bug.")
 
             elif is_debug_focused:
                 log.log(f"DEBUG ({self.id}): Conditions met to sprout, but not enough energy ({self.energy:.2f} < {C.PLANT_SPROUTING_ENERGY_COST}).")
