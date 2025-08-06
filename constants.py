@@ -304,9 +304,10 @@ PLANT_STABLE_CORE_INVESTMENT_RATIO = 0.15
 PLANT_SPROUT_CORE_RADIUS_CM = 1.6
 
 # This now represents the BASE or "genetically ideal" shape of the plant in open sunlight.
-# A low value means a wide, sprawling plant (like an oak).
+# A value < 1.0 encourages a wide, sprawling plant (like an oak).
+# A value > 1.0 encourages a tall, thin plant (like a pine).
 # Unit: Unitless ratio
-PLANT_RADIUS_TO_HEIGHT_FACTOR = 2.0
+PLANT_RADIUS_TO_HEIGHT_FACTOR = 4.0
 
 # The target shape a plant will strive for when completely shaded.
 # A high value means a tall, skinny plant (like a pine in a dense forest).
