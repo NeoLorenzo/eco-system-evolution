@@ -163,10 +163,16 @@ PLANT_RESPIRATION_REFERENCE_TEMP = 0.5
 PLANT_Q10_INTERVAL_DIVISOR = 0.2
 
 # --- Biomass Cost (Growth Cost) ---
-# Calculation: Energy Density of Biomass * Mass per Area of Growth
-# This now represents the cost to grow a 2D area of "cheap" tissue like roots and leaves.
-# Units: (J/kg) * (kg/m^2) / (cm^2/m^2) = J/cm^2
-PLANT_BIOMASS_ENERGY_COST = (BIOMASS_ENERGY_DENSITY_J_PER_KG * LEAF_MASS_PER_AREA_KG_PER_M2) / CM2_PER_M2
+# An abstraction (Rule 9): The cost of creating leaf/root area in our 2D model must also account
+# for the cost of the underlying 3D support structures (branches, stems). This multiplier
+# increases the base cost (calculated from leaf mass) to a more realistic average for all tissues.
+# Unit: Unitless
+PLANT_STRUCTURAL_BIOMASS_MULTIPLIER = 8.0
+
+# Calculation: Energy Density of Biomass * Mass per Area of Growth * Structural Multiplier
+# This now represents the cost to grow a 2D area of "average" tissue like roots and canopy.
+# Units: (J/kg) * (kg/m^2) / (cm^2/m^2) * multiplier = J/cm^2
+PLANT_BIOMASS_ENERGY_COST = ((BIOMASS_ENERGY_DENSITY_J_PER_KG * LEAF_MASS_PER_AREA_KG_PER_M2) / CM2_PER_M2) * PLANT_STRUCTURAL_BIOMASS_MULTIPLIER
 
 # A multiplier to define how much more expensive structural core tissue is compared to standard biomass.
 # Unit: Unitless
