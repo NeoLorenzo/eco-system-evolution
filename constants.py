@@ -322,7 +322,7 @@ PLANT_MORPHOLOGY_ADAPTATION_RATE = 0.01
 # The characteristic height at which hydraulic stress begins to significantly
 # limit photosynthetic efficiency. At this height, efficiency drops to ~37% (1/e).
 # Unit: Centimeters (cm)
-PLANT_MAX_HYDRAULIC_HEIGHT_CM = 1000.0 # Represents a very tall tree (50 meters)
+PLANT_MAX_HYDRAULIC_HEIGHT_CM = 5000.0 # Represents a very tall tree (50 meters)
 
 # --- Reproduction & Spacing ---
 PLANT_MAX_NEIGHBORS = 5
