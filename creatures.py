@@ -197,18 +197,24 @@ class Plant(Creature):
         hydraulic_efficiency = world.plant_manager.arrays['hydraulic_efficiencies'][self.index]
         
         # --- 4. Calculate energy gain (Photosynthesis) ---
-        effective_canopy_area = max(0, canopy_area - self.shaded_canopy_area)
-        environmental_efficiency = world.plant_manager.arrays['environmental_efficiencies'][self.index]
-        photosynthesis_gain = effective_canopy_area * C.PLANT_PHOTOSYNTHESIS_PER_AREA * environmental_efficiency * soil_eff * aging_efficiency * hydraulic_efficiency * time_step 
+        # Look up the pre-calculated gain rate and scale it by the time step.
+        photosynthesis_gain_per_second = world.plant_manager.arrays['photosynthesis_gains_per_second'][self.index]
+        photosynthesis_gain = photosynthesis_gain_per_second * time_step
         
         # --- 5. Calculate energy loss (Metabolism) ---
         metabolism_cost_per_second = world.plant_manager.arrays['metabolism_costs_per_second'][self.index]
         metabolism_cost = metabolism_cost_per_second * time_step
         
         if is_debug_focused:
+            # Re-calculate effective_canopy_area here just for the debug log.
+            # The main calculation now uses the pre-computed value.
+            shaded_canopy_area = world.plant_manager.arrays['shaded_canopy_areas'][self.index]
+            effective_canopy_area = max(0, canopy_area - shaded_canopy_area)
+
             environmental_efficiency = world.plant_manager.arrays['environmental_efficiencies'][self.index]
             log.log(f"    Energy Calc: Effective Canopy={effective_canopy_area:.2f} (Total: {canopy_area:.2f})")
-            log.log(f"    Efficiencies: Env={environmental_efficiency:.3f}, Soil={soil_eff:.3f} (Root Comp Eff: {root_competition_eff:.3f}), Aging={aging_efficiency:.3f}, Hydraulic={hydraulic_efficiency:.3f}")
+            # The 'Root Comp Eff' is now implicitly included in the 'Soil' efficiency value.
+            log.log(f"    Efficiencies: Env={environmental_efficiency:.3f}, Soil={soil_eff:.3f}, Aging={aging_efficiency:.3f}, Hydraulic={hydraulic_efficiency:.3f}")
 
         net_energy_production = photosynthesis_gain - metabolism_cost
         
@@ -402,17 +408,39 @@ class Plant(Creature):
         # --- 1. CORE BIOLOGY: Calculate Net Energy ---
         net_energy_production, photosynthesis_gain, metabolism_cost, canopy_area, root_area, core_area = self._calculate_energy_balance(world, time_step, is_debug_focused)
 
-        # --- 2. Self-Pruning Logic (Energy Deficit Response) ---
+        # --- 2. Branch Logic: Handle Energy Deficit OR Surplus ---
         if net_energy_production < 0:
-            energy_deficit = abs(net_energy_production)
-            net_energy_production = self._process_self_pruning(energy_deficit, canopy_area, root_area, core_area, world, time_step, is_debug_focused)
+            # --- STATE: ENERGY DEFICIT ---
+            # A plant with a deficit has two options:
+            # 1. Use its stored energy reserves (the "grace period" for seedlings).
+            # 2. If reserves are low, prune biomass as a last resort.
+            if self.energy > C.PLANT_GROWTH_INVESTMENT_ENERGY_RESERVE:
+                # Option 1: Cover the deficit from reserves. The net production remains negative
+                # and will be subtracted from self.energy in the next step.
+                if is_debug_focused:
+                    log.log(f"    DEFICIT: Covering deficit of {abs(net_energy_production):.4f} J from reserves.")
+            else:
+                # Option 2: Reserves are low. Prune to survive.
+                energy_deficit = abs(net_energy_production)
+                net_energy_production = self._process_self_pruning(energy_deficit, canopy_area, root_area, core_area, world, time_step, is_debug_focused)
+                # After pruning, check for catastrophic biomass loss.
+                if self.radius < 0.1: # If the plant has pruned itself to nothing
+                    if is_debug_focused: log.log(f"DEATH ({self.id}): Plant pruned itself into non-existence.")
+                    self.die(world, "pruning_collapse")
+                    return # End update immediately
+        else:
+            # --- STATE: ENERGY SURPLUS ---
+            # A plant only allocates to growth/reproduction if it has a surplus.
+            self._allocate_surplus_energy(net_energy_production, canopy_area, root_area, core_area, world, time_step, is_debug_focused)
 
         # --- 3. Update Stored Energy & Check for Starvation ---
+        # Note: self.energy is only modified by _allocate_surplus_energy (spending reserves)
+        # or by adding the net_energy_production from photosynthesis.
         self.energy += net_energy_production
         world.plant_manager.arrays['energies'][self.index] = self.energy
 
         if is_debug_focused:
-            log.log(f"    Energy: Gained={photosynthesis_gain:.4f}, Lost={metabolism_cost:.4f}, Net (Post-Pruning)={net_energy_production:.4f}")
+            log.log(f"    Energy: Gained={photosynthesis_gain:.4f}, Lost={metabolism_cost:.4f}, Net (Post-Pruning/Allocation)={net_energy_production:.4f}")
 
         if self.energy <= 0:
             self.die(world, "starvation")
@@ -424,9 +452,6 @@ class Plant(Creature):
             self.has_reached_self_sufficiency = True
             self.life_stage = "mature"
             if is_debug_focused: log.log(f"    MILESTONE ({self.id}): Seedling reached self-sufficiency and is now mature!")
-
-        # --- 5. Allocate Surplus Energy to Reproduction and Growth ---
-        self._allocate_surplus_energy(net_energy_production, canopy_area, root_area, core_area, world, time_step, is_debug_focused)
 
     def update(self, world, time_step):
         if not self.is_alive: return

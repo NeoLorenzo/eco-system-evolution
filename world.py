@@ -375,7 +375,6 @@ class World:
         self.plant_manager.update_environmental_efficiencies(self.environment)
         self.plant_manager.update_soil_efficiencies()
         self.plant_manager.update_photosynthesis_gains()
-        log.log("Performing bulk metabolism calculation for all plants...")
         self.plant_manager.update_metabolism_costs(self.environment)
 
         start_time = self.time_manager.total_sim_seconds
