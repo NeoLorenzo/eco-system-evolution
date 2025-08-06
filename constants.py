@@ -185,7 +185,7 @@ PLANT_CORE_BIOMASS_ENERGY_COST = PLANT_BIOMASS_ENERGY_COST * PLANT_CORE_COST_MUL
 # A starting buffer to survive the initial phase where the canopy is small.
 # This represents the energy stored in the seed (endosperm) and must be
 # large enough to cover the metabolic deficit of a seedling for several days.
-CREATURE_INITIAL_ENERGY = 48000.0
+CREATURE_INITIAL_ENERGY = 150000.0
 INITIAL_PLANT_POSITION = (50000, 50000)
 INITIAL_ANIMAL_POSITION = (51000, 51000)
 
@@ -275,7 +275,7 @@ PLANT_PRUNING_EFFICIENCY = 1.0
 # --- Initial Properties & Size ---
 # The initial radius of a seedling's canopy and roots right after sprouting.
 # Unit: Centimeters (cm)
-PLANT_SPROUT_RADIUS_CM = 1.0
+PLANT_SPROUT_RADIUS_CM = 5.0
 
 # --- Growth Allocation ---
 # The ideal ratio of core cross-sectional area to canopy area that the plant
@@ -295,7 +295,7 @@ PLANT_STABLE_CORE_INVESTMENT_RATIO = 0.15
 
 # The initial radius of a seedling's structural core right after sprouting.
 # Unit: Centimeters (cm)
-PLANT_SPROUT_CORE_RADIUS_CM = 0.2
+PLANT_SPROUT_CORE_RADIUS_CM = 1.6
 
 # This now represents the BASE or "genetically ideal" shape of the plant in open sunlight.
 # A low value means a wide, sprawling plant (like an oak).
