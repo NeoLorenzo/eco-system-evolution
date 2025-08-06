@@ -87,7 +87,7 @@ def main():
     
     # --- Post-simulation analysis ---
     if world.graphing_manager.has_data():
-        world.graphing_manager.generate_and_save_graph()
+        world.graphing_manager.generate_and_save_graphs()
 
     shutdown_simulation()
     logger.log("--- Simulation Exit ---")

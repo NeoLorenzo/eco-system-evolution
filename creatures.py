@@ -413,12 +413,17 @@ class Plant(Creature):
         if is_debug_focused and world.time_manager.total_sim_seconds >= self.last_graph_log_time + C.GRAPHING_DATA_LOG_INTERVAL_SECONDS:
             # We log the net energy per hour for better readability on the graph
             net_energy_per_hour = net_energy_production / (time_step / C.SECONDS_PER_HOUR)
-            world.graphing_manager.add_data_point(world.time_manager.total_sim_seconds, net_energy_per_hour)
+            world.graphing_manager.add_data_point(
+                world.time_manager.total_sim_seconds, 
+                net_energy_per_hour,
+                self.height,
+                self.radius
+            )
             self.last_graph_log_time = world.time_manager.total_sim_seconds
 
         # --- 3. Branch Logic: Handle Energy Deficit OR Surplus ---
         if net_energy_production < 0:
-            
+
             # --- STATE: ENERGY DEFICIT ---
             # A plant with a deficit has two options:
             # 1. Use its stored energy reserves (the "grace period" for seedlings).
