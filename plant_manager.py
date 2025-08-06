@@ -38,6 +38,7 @@ class PlantManager:
             'hydraulic_efficiencies': np.ones(initial_capacity, dtype=np.float32),
             'environmental_efficiencies': np.ones(initial_capacity, dtype=np.float32),
             'soil_efficiencies': np.ones(initial_capacity, dtype=np.float32),
+            'photosynthesis_gains_per_second': np.zeros(initial_capacity, dtype=np.float32),
             'metabolism_costs_per_second': np.zeros(initial_capacity, dtype=np.float32),
             'canopy_areas': np.zeros(initial_capacity, dtype=np.float32), # Caches the result of pi * r^2
         }
@@ -191,6 +192,70 @@ class PlantManager:
 
         # Store the final results back into the main array
         self.arrays['metabolism_costs_per_second'][:self.count] = metabolism_per_second
+
+    def update_soil_efficiencies(self):
+        """
+        Calculates soil nutrient uptake efficiency for ALL plants in a single vectorized operation.
+        """
+        if self.count == 0: return
+
+        # Get slices of the arrays for all living plants
+        live_indices = slice(0, self.count)
+        soil_ids = self.arrays['soil_type_ids'][live_indices]
+        radii = self.arrays['radii'][live_indices]
+        root_radii = self.arrays['root_radii'][live_indices]
+
+        # --- Step 1: Get the base efficiency from the soil type ---
+        # This is a fast, vectorized lookup. It uses the array of soil_ids
+        # to grab the corresponding efficiency value from the constants array.
+        max_soil_effs = C.PLANT_SOIL_ID_TO_EFFICIENCY[soil_ids]
+
+        # --- Step 2: Calculate the root-to-canopy ratio modifier ---
+        # We add 1 to the radius to avoid division by zero for new seedlings.
+        root_to_canopy_ratios = root_radii / (radii + 1)
+        ratio_modifier = np.minimum(1.0, root_to_canopy_ratios * C.PLANT_ROOT_EFFICIENCY_FACTOR)
+
+        # --- Step 3: Calculate the root competition modifier ---
+        # We add a very small number (epsilon) to the denominator to prevent division by zero
+        # for plants that might have zero root area.
+        root_areas = np.pi * root_radii**2
+        overlapped_areas = self.arrays['overlapped_root_areas'][live_indices]
+        effective_root_areas = np.maximum(0, root_areas - overlapped_areas)
+        root_competition_eff = effective_root_areas / (root_areas + 1e-9) # Add epsilon for safety
+
+        # --- Step 4: Combine all factors ---
+        final_soil_eff = max_soil_effs * ratio_modifier * root_competition_eff
+
+        # Store the final results back into the main array
+        self.arrays['soil_efficiencies'][live_indices] = final_soil_eff
+
+    def update_photosynthesis_gains(self):
+        """
+        Calculates the gross energy gain per second from photosynthesis for ALL plants.
+        """
+        if self.count == 0: return
+        live_indices = slice(0, self.count)
+
+        # --- Step 1: Calculate effective canopy area ---
+        canopy_areas = self.arrays['canopy_areas'][live_indices]
+        shaded_areas = self.arrays['shaded_canopy_areas'][live_indices]
+        effective_canopy_areas = np.maximum(0, canopy_areas - shaded_areas)
+
+        # --- Step 2: Gather all efficiency multipliers ---
+        env_eff = self.arrays['environmental_efficiencies'][live_indices]
+        soil_eff = self.arrays['soil_efficiencies'][live_indices]
+        aging_eff = self.arrays['aging_efficiencies'][live_indices]
+        hydraulic_eff = self.arrays['hydraulic_efficiencies'][live_indices]
+
+        # --- Step 3: Calculate final gain rate ---
+        gain_rate = (effective_canopy_areas *
+                     C.PLANT_PHOTOSYNTHESIS_PER_AREA *
+                     env_eff *
+                     soil_eff *
+                     aging_eff *
+                     hydraulic_eff)
+
+        self.arrays['photosynthesis_gains_per_second'][live_indices] = gain_rate
 
     def remove_plant(self, plant_to_remove):
         """
