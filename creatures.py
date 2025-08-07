@@ -282,8 +282,8 @@ class Plant(Creature):
     def _process_self_pruning(self, energy_deficit, canopy_area, root_area, core_area, world, time_step, is_debug_focused):
         """
         Handles the shedding of biomass when a plant has an energy deficit.
-        This reduces the plant's size to lower its metabolic costs.
-        Returns the new net_energy_production, which is always 0 after pruning.
+        This reduces the plant's size to lower its future metabolic costs.
+        This function does not return a value; it only modifies the plant's state.
         """
         total_sheddable_area = canopy_area + root_area + core_area
         metabolism_cost_per_second = world.plant_manager.arrays['metabolism_costs_per_second'][self.index]
@@ -326,10 +326,6 @@ class Plant(Creature):
 
                 if is_debug_focused:
                     log.log(f"      - New Radii: Canopy={self.radius:.2f}, Core={self.core_radius:.2f}.")
-
-        # By pruning, the plant has "paid" its energy deficit for this tick with biomass.
-        # We return 0 to prevent a "double penalty" (losing biomass AND stored energy).
-        return 0
 
     def _allocate_surplus_energy(self, net_energy_production, canopy_area, root_area, core_area, world, time_step, is_debug_focused):
         """
@@ -484,43 +480,43 @@ class Plant(Creature):
             self.last_graph_log_time = world.time_manager.total_sim_seconds
 
         # --- 3. Branch Logic: Handle Energy Deficit OR Surplus ---
+        # --- 3. Branch Logic: Handle Energy Deficit OR Surplus ---
         if net_energy_production < 0:
-
             # --- STATE: ENERGY DEFICIT ---
-            # A plant with a deficit has two options:
-            # 1. Use its stored energy reserves (the "grace period" for seedlings).
-            # 2. If reserves are low, prune biomass as a last resort.
-            if self.energy > C.PLANT_GROWTH_INVESTMENT_ENERGY_RESERVE:
-                # Option 1: Cover the deficit from reserves. The net production remains negative
-                # and will be subtracted from self.energy in the next step.
-                if is_debug_focused:
-                    log.log(f"    DEFICIT: Covering deficit of {abs(net_energy_production):.4f} J from reserves.")
-            else:
-                # Option 2: Reserves are low. Prune to survive.
+            # A plant with a deficit ALWAYS loses stored energy from this tick's metabolism.
+            # If its reserves are also low, it will start pruning itself to reduce future costs.
+            if self.energy <= C.PLANT_GROWTH_INVESTMENT_ENERGY_RESERVE:
                 energy_deficit = abs(net_energy_production)
-                net_energy_production = self._process_self_pruning(energy_deficit, canopy_area, root_area, core_area, world, time_step, is_debug_focused)
-                # After pruning, check for catastrophic biomass loss.
-                if self.radius < 0.1: # If the plant has pruned itself to nothing
+                self._process_self_pruning(energy_deficit, canopy_area, root_area, core_area, world, time_step, is_debug_focused)
+                
+                if self.radius < 0.1:
                     if is_debug_focused: log.log(f"DEATH ({self.id}): Plant pruned itself into non-existence.")
                     self.die(world, "pruning_collapse")
-                    return # End update immediately
-        else:
+                    return
+            elif is_debug_focused:
+                log.log(f"    DEFICIT: Covering deficit of {abs(net_energy_production):.4f} J from reserves. No pruning yet.")
+        
+        else: # net_energy_production >= 0
             # --- STATE: ENERGY SURPLUS ---
-            # A plant only allocates to growth/reproduction if it has a surplus.
+            # The plant allocates the surplus to growth and reproduction.
+            # This function handles all energy changes internally.
             self._allocate_surplus_energy(net_energy_production, canopy_area, root_area, core_area, world, time_step, is_debug_focused)
+            # Set net_energy to 0 because it has been "spent" on growth, preventing it from being double-counted.
+            net_energy_production = 0
 
-        # --- 3. Update Stored Energy & Check for Starvation ---
-        # Note: self.energy is only modified by _allocate_surplus_energy (spending reserves)
-        # or by adding the net_energy_production from photosynthesis.
+        # --- 4. Update Stored Energy & Check for Starvation ---
+        # This is the single point of truth for energy accounting.
+        # If in deficit, net_energy_production is negative and drains energy.
+        # If in surplus, net_energy_production was set to 0, as it was already allocated.
         self.energy += net_energy_production
         world.plant_manager.arrays['energies'][self.index] = self.energy
 
         if is_debug_focused:
-            log.log(f"    Energy: Gained={photosynthesis_gain:.4f}, Lost={metabolism_cost:.4f}, Net (Post-Pruning/Allocation)={net_energy_production:.4f}")
+            log.log(f"    Energy: Gained={photosynthesis_gain:.4f}, Lost={metabolism_cost:.4f}, Net added to reserves={net_energy_production:.4f}")
 
         if self.energy <= 0:
             self.die(world, "starvation")
-            if is_debug_focused: log.log(f"  Plant {self.id} ({self.life_stage}) died from starvation. Final Energy: {self.energy:.2f}")
+            if is_debug_focused: log.log(f"DEATH ({self.id}): Plant died from starvation. Final Energy: {self.energy:.2f}")
             return
 
         # --- 4. Update Life Stage ---
