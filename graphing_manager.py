@@ -13,7 +13,10 @@ class GraphingManager:
             'time_days': [],
             'net_energy': [],
             'height': [],
-            'radius': []
+            'radius': [],
+            'canopy_area': [],
+            'root_area': [],
+            'core_area': []
         }
         self.focused_plant_id = None
         log.log("GraphingManager initialized.")
@@ -35,7 +38,7 @@ class GraphingManager:
         log.log(f"[GraphingManager] Stopped tracking Plant ID: {self.focused_plant_id}. Data will be plotted on exit.")
         self.focused_plant_id = None
 
-    def add_data_point(self, time_seconds, net_energy, height, radius):
+    def add_data_point(self, time_seconds, net_energy, height, radius, canopy_area, root_area, core_area):
         """
         Adds a single time-stamped data point to all data series.
         """
@@ -44,6 +47,9 @@ class GraphingManager:
         self.data['net_energy'].append(net_energy)
         self.data['height'].append(height)
         self.data['radius'].append(radius)
+        self.data['canopy_area'].append(canopy_area)
+        self.data['root_area'].append(root_area)
+        self.data['core_area'].append(core_area)
 
     def has_data(self):
         """
@@ -115,6 +121,33 @@ class GraphingManager:
         except Exception as e:
             log.log(f"[GraphingManager] ERROR: Could not save growth graph. Reason: {e}")
 
+    def generate_and_save_biomass_graph(self):
+        """
+        Uses matplotlib to generate and save a line graph of the plant's biomass components.
+        """
+        log.log("[GraphingManager] Generating biomass plot...")
+        
+        fig, ax = plt.subplots(figsize=(12, 7))
+        
+        ax.plot(self.data['time_days'], self.data['canopy_area'], label='Canopy Area (cm²)', color='tab:green')
+        ax.plot(self.data['time_days'], self.data['root_area'], label='Root Area (cm²)', color='tab:brown')
+        ax.plot(self.data['time_days'], self.data['core_area'], label='Core Area (cm²)', color='tab:gray')
+
+        ax.set_title('Focused Plant: Biomass Components Over Time')
+        ax.set_xlabel('Time (Simulation Days)')
+        ax.set_ylabel('Area (cm²)')
+        ax.grid(True, which='both', linestyle='--', linewidth=0.5)
+        ax.legend()
+        
+        fig.tight_layout()
+
+        try:
+            file_path = 'focused_plant_biomass_graph.png'
+            fig.savefig(file_path)
+            log.log(f"[GraphingManager] Biomass graph saved to {file_path}")
+        except Exception as e:
+            log.log(f"[GraphingManager] ERROR: Could not save biomass graph. Reason: {e}")
+
     def generate_and_save_graphs(self):
         """
         Generates, saves, and displays all configured graphs if data exists.
@@ -125,5 +158,6 @@ class GraphingManager:
 
         self.generate_and_save_energy_graph()
         self.generate_and_save_growth_graph()
+        self.generate_and_save_biomass_graph()
 
         plt.show()

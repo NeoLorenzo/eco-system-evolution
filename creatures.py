@@ -476,7 +476,10 @@ class Plant(Creature):
                 world.time_manager.total_sim_seconds, 
                 net_energy_per_hour,
                 self.height,
-                self.radius
+                self.radius,
+                canopy_area,
+                root_area,
+                core_area
             )
             self.last_graph_log_time = world.time_manager.total_sim_seconds
 
