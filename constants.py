@@ -182,6 +182,14 @@ PLANT_CORE_COST_MULTIPLIER = 8.0
 # Unit: J/cm^2
 PLANT_CORE_BIOMASS_ENERGY_COST = PLANT_BIOMASS_ENERGY_COST * PLANT_CORE_COST_MULTIPLIER
 
+# --- Growth Efficiency ---
+# An abstraction (Rule 9): As a plant grows larger, it becomes less efficient at
+# converting energy into new biomass due to increased transport distances and structural complexity.
+# This constant defines the total biomass area (canopy + root + core) at which
+# the efficiency of investing in new growth drops to 50%.
+# Unit: Square Centimeters (cm^2)
+PLANT_GROWTH_EFFICIENCY_BIOMASS_THRESHOLD = 1000000.0 # Efficiency is 50% at 100 m^2 of total area
+
 # --- Self-Shading & Canopy Efficiency ---
 # An abstraction (Rule 9): As a plant's canopy grows, its own leaves begin to shade each other,
 # leading to diminishing returns. This is driven by the depth/thickness of the canopy.

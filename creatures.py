@@ -385,6 +385,14 @@ class Plant(Creature):
                 log.log(f"    Allocation: No surplus energy or reserves to invest in growth.")
         
         if growth_energy > 0:
+            # --- NEW: Calculate Growth Efficiency ---
+            total_biomass_area = canopy_area + root_area + core_area
+            growth_efficiency = 1.0 / (1.0 + (total_biomass_area / C.PLANT_GROWTH_EFFICIENCY_BIOMASS_THRESHOLD))
+            effective_growth_energy = growth_energy * growth_efficiency
+
+            if is_debug_focused:
+                log.log(f"    Allocation (Growth): Investing {growth_energy:.2f} J. Growth Efficiency: {growth_efficiency:.3f}. Effective Growth Energy: {effective_growth_energy:.2f} J.")
+
             core_investment = 0
             canopy_root_investment = 0
 
@@ -392,20 +400,22 @@ class Plant(Creature):
                 current_ratio = core_area / canopy_area
                 
                 if current_ratio < C.PLANT_IDEAL_CORE_TO_CANOPY_AREA_RATIO:
-                    core_investment = growth_energy
+                    # Apply the effective energy to the highest priority: core recovery
+                    core_investment = effective_growth_energy
                     if is_debug_focused:
                         log.log(f"    Allocation (Structural): RECOVERY MODE. Ratio={current_ratio:.4f} is below ideal {C.PLANT_IDEAL_CORE_TO_CANOPY_AREA_RATIO:.4f}.")
-                        log.log(f"    Allocation (Structural): Investing 100% of growth energy ({growth_energy:.4f} J) into Core.")
+                        log.log(f"    Allocation (Structural): Investing 100% of effective growth energy ({core_investment:.2f} J) into Core.")
                 
                 else:
-                    core_investment = growth_energy * C.PLANT_STABLE_CORE_INVESTMENT_RATIO
-                    canopy_root_investment = growth_energy * (1.0 - C.PLANT_STABLE_CORE_INVESTMENT_RATIO)
+                    # Split the effective energy between core and other biomass
+                    core_investment = effective_growth_energy * C.PLANT_STABLE_CORE_INVESTMENT_RATIO
+                    canopy_root_investment = effective_growth_energy * (1.0 - C.PLANT_STABLE_CORE_INVESTMENT_RATIO)
                     if is_debug_focused:
-                        log.log(f"    Allocation (Structural): Normal Growth. Investing {core_investment:.4f} J in Core, {canopy_root_investment:.4f} J in Canopy/Roots.")
+                        log.log(f"    Allocation (Structural): Normal Growth. Investing {core_investment:.2f} J in Core, {canopy_root_investment:.2f} J in Canopy/Roots.")
 
-            else:
-                core_investment = growth_energy * C.PLANT_STABLE_CORE_INVESTMENT_RATIO
-                canopy_root_investment = growth_energy * (1.0 - C.PLANT_STABLE_CORE_INVESTMENT_RATIO)
+            else: # For very new seedlings
+                core_investment = effective_growth_energy * C.PLANT_STABLE_CORE_INVESTMENT_RATIO
+                canopy_root_investment = effective_growth_energy * (1.0 - C.PLANT_STABLE_CORE_INVESTMENT_RATIO)
 
             soil_eff = world.plant_manager.arrays['soil_efficiencies'][self.index]
             environmental_efficiency = world.plant_manager.arrays['environmental_efficiencies'][self.index]
