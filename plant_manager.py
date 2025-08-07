@@ -241,19 +241,30 @@ class PlantManager:
         shaded_areas = self.arrays['shaded_canopy_areas'][live_indices]
         effective_canopy_areas = np.maximum(0, canopy_areas - shaded_areas)
 
-        # --- Step 2: Gather all efficiency multipliers ---
+        # --- Step 2: Calculate Self-Shading Efficiency (Diminishing Returns) ---
+        # This models how a plant's own dense canopy becomes less efficient per-area,
+        # based on the canopy's depth, which is proportional to its radius.
+        radii = self.arrays['radii'][live_indices]
+        canopy_depth = radii * C.PLANT_CANOPY_DEPTH_TO_RADIUS_RATIO
+        
+        # Saturation model: efficiency approaches zero as depth increases.
+        self_shading_efficiency = 1.0 / (1.0 + (canopy_depth / C.PLANT_CANOPY_HALF_EFFICIENCY_DEPTH_CM))
+        
+        # --- Step 3: Gather all other efficiency multipliers ---
         env_eff = self.arrays['environmental_efficiencies'][live_indices]
         soil_eff = self.arrays['soil_efficiencies'][live_indices]
         aging_eff = self.arrays['aging_efficiencies'][live_indices]
         hydraulic_eff = self.arrays['hydraulic_efficiencies'][live_indices]
 
-        # --- Step 3: Calculate final gain rate ---
+        # --- Step 4: Calculate final gain rate ---
+        # Note the addition of the new self_shading_efficiency term.
         gain_rate = (effective_canopy_areas *
-                     C.PLANT_PHOTOSYNTHESIS_PER_AREA *
-                     env_eff *
-                     soil_eff *
-                     aging_eff *
-                     hydraulic_eff)
+                    C.PLANT_PHOTOSYNTHESIS_PER_AREA *
+                    env_eff *
+                    soil_eff *
+                    aging_eff *
+                    hydraulic_eff *
+                    self_shading_efficiency)
 
         self.arrays['photosynthesis_gains_per_second'][live_indices] = gain_rate
 

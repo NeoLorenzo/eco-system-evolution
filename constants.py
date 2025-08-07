@@ -182,6 +182,20 @@ PLANT_CORE_COST_MULTIPLIER = 8.0
 # Unit: J/cm^2
 PLANT_CORE_BIOMASS_ENERGY_COST = PLANT_BIOMASS_ENERGY_COST * PLANT_CORE_COST_MULTIPLIER
 
+# --- Self-Shading & Canopy Efficiency ---
+# An abstraction (Rule 9): As a plant's canopy grows, its own leaves begin to shade each other,
+# leading to diminishing returns. This is driven by the depth/thickness of the canopy.
+# We model canopy depth as being directly proportional to the canopy's radius.
+# Unit: Unitless ratio
+PLANT_CANOPY_DEPTH_TO_RADIUS_RATIO = 0.5 # A plant's canopy is half as deep as it is wide.
+
+# This constant defines the canopy depth at which self-shading reduces the plant's
+# overall photosynthetic efficiency to 50%. This is based on Michaelis-Menten kinetics.
+# A larger value means the plant can have a much deeper canopy before efficiency drops.
+# Unit: Centimeters (cm)
+PLANT_CANOPY_HALF_EFFICIENCY_DEPTH_CM = 400.0 # Efficiency is 50% when canopy is 4m deep.
+
+
 # =============================================================================
 # --- CREATURES (GENERAL) ---
 # =============================================================================

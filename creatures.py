@@ -269,7 +269,11 @@ class Plant(Creature):
             environmental_efficiency = world.plant_manager.arrays['environmental_efficiencies'][self.index]
             log.log(f"    Energy Calc: Effective Canopy={effective_canopy_area:.2f} (Total: {canopy_area:.2f})")
             # The 'Root Comp Eff' is now implicitly included in the 'Soil' efficiency value.
-            log.log(f"    Efficiencies: Env={environmental_efficiency:.3f}, Soil={soil_eff:.3f}, Aging={aging_efficiency:.3f}, Hydraulic={hydraulic_efficiency:.3f}")
+            
+            # Recalculate self-shading eff here just for the log, as it's not stored in the manager.
+            canopy_depth = self.radius * C.PLANT_CANOPY_DEPTH_TO_RADIUS_RATIO
+            self_shading_eff = 1.0 / (1.0 + (canopy_depth / C.PLANT_CANOPY_HALF_EFFICIENCY_DEPTH_CM))
+            log.log(f"    Efficiencies: Env={environmental_efficiency:.3f}, Soil={soil_eff:.3f}, Aging={aging_efficiency:.3f}, Hydraulic={hydraulic_efficiency:.3f}, Self-Shade={self_shading_eff:.3f}")
 
         net_energy_production = photosynthesis_gain - metabolism_cost
         
@@ -332,7 +336,8 @@ class Plant(Creature):
         Handles the investment of surplus energy into reproduction and growth.
         """
         # 1. Mature plants invest in creating flowers.
-        if self.life_stage == "mature":
+        # --- TEMPORARY DEBUG FLAG TO DISABLE REPRODUCTION ---
+        if self.life_stage == "mature" and False:
             desired_repro_investment = (C.PLANT_REPRODUCTIVE_INVESTMENT_J_PER_HOUR / C.SECONDS_PER_HOUR) * time_step
             available_for_repro = max(0, self.energy - C.PLANT_GROWTH_INVESTMENT_ENERGY_RESERVE)
             actual_repro_investment = min(desired_repro_investment, available_for_repro)
