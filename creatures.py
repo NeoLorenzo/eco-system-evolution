@@ -469,13 +469,14 @@ class Plant(Creature):
             # We log the net energy per hour for better readability on the graph
             net_energy_per_hour = net_energy_production / (time_step / C.SECONDS_PER_HOUR)
             world.graphing_manager.add_data_point(
-                world.time_manager.total_sim_seconds, 
+                world.time_manager.total_sim_seconds,
                 net_energy_per_hour,
                 self.height,
                 self.radius,
                 canopy_area,
                 root_area,
-                core_area
+                core_area,
+                self.energy
             )
             self.last_graph_log_time = world.time_manager.total_sim_seconds
 
