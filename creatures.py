@@ -327,9 +327,10 @@ class Plant(Creature):
                 if is_debug_focused:
                     log.log(f"      - New Radii: Canopy={self.radius:.2f}, Core={self.core_radius:.2f}.")
 
-    def _allocate_surplus_energy(self, net_energy_production, canopy_area, root_area, core_area, world, time_step, is_debug_focused):
+    def _allocate_surplus_energy(self, canopy_area, root_area, core_area, world, time_step, is_debug_focused):
         """
         Handles the investment of surplus energy into reproduction and growth.
+        This function now assumes self.energy is already updated for the tick.
         """
         # 1. Mature plants invest in creating flowers.
         # --- TEMPORARY DEBUG FLAG TO DISABLE REPRODUCTION ---
@@ -341,7 +342,7 @@ class Plant(Creature):
             if actual_repro_investment > 0:
                 pm = world.plant_manager
                 self.energy -= actual_repro_investment
-                pm.arrays['energies'][self.index] = self.energy
+                # No need to update the manager array here, it will be done once at the end of the main update.
                 self.reproductive_energy_stored += actual_repro_investment
                 pm.arrays['reproductive_energies_stored'][self.index] = self.reproductive_energy_stored
                 
@@ -362,19 +363,19 @@ class Plant(Creature):
                     log.log(f"    Allocation (Reproductive): Invested {actual_repro_investment:.4f} J. Stored ReproEnergy: {self.reproductive_energy_stored:.2f} J. (Max flowers reached or not enough energy for one).")
 
         # 2. Remaining surplus and reserves are allocated to growth.
-        investment_from_reserves = 0
+        growth_energy = 0
         if self.energy > C.PLANT_GROWTH_INVESTMENT_ENERGY_RESERVE:
             desired_investment = (C.PLANT_GROWTH_INVESTMENT_J_PER_HOUR / C.SECONDS_PER_HOUR) * time_step
-            available_from_reserves = self.energy - C.PLANT_GROWTH_INVESTMENT_ENERGY_RESERVE
-            investment_from_reserves = min(desired_investment, available_from_reserves)
-            self.energy -= investment_from_reserves
-            world.plant_manager.arrays['energies'][self.index] = self.energy
-
-        growth_energy = max(0, net_energy_production) + investment_from_reserves
+            # Key change: Calculate available energy above the reserve buffer.
+            available_from_surplus = self.energy - C.PLANT_GROWTH_INVESTMENT_ENERGY_RESERVE
+            # Invest the smaller of the desired amount or what's available in the surplus.
+            growth_energy = min(desired_investment, available_from_surplus)
+            
+            self.energy -= growth_energy # Spend the energy from the main store.
 
         if is_debug_focused:
             if growth_energy > 0:
-                log.log(f"    Allocation (Growth): Total pool {growth_energy:.4f} J available for growth.")
+                log.log(f"    Allocation (Growth): Investing {growth_energy:.4f} J from surplus into growth.")
             else:
                 log.log(f"    Allocation: No surplus energy or reserves to invest in growth.")
         
@@ -466,67 +467,47 @@ class Plant(Creature):
 
         # --- 2. Graphing Data Collection ---
         if is_debug_focused and world.time_manager.total_sim_seconds >= self.last_graph_log_time + C.GRAPHING_DATA_LOG_INTERVAL_SECONDS:
-            # We log the net energy per hour for better readability on the graph
             net_energy_per_hour = net_energy_production / (time_step / C.SECONDS_PER_HOUR)
-            
-            # Get the efficiency values from the manager for the current plant
             pm = world.plant_manager
             idx = self.index
             aging_eff = pm.arrays['aging_efficiencies'][idx]
             hydraulic_eff = pm.arrays['hydraulic_efficiencies'][idx]
             env_eff = pm.arrays['environmental_efficiencies'][idx]
             soil_eff = pm.arrays['soil_efficiencies'][idx]
-
             world.graphing_manager.add_data_point(
-                world.time_manager.total_sim_seconds,
-                net_energy_per_hour,
-                self.height,
-                self.radius,
-                canopy_area,
-                root_area,
-                core_area,
-                self.energy,
-                aging_eff,
-                hydraulic_eff,
-                env_eff,
-                soil_eff
+                world.time_manager.total_sim_seconds, net_energy_per_hour, self.height, self.radius,
+                canopy_area, root_area, core_area, self.energy, aging_eff, hydraulic_eff, env_eff, soil_eff
             )
             self.last_graph_log_time = world.time_manager.total_sim_seconds
 
-        # --- 3. Branch Logic: Handle Energy Deficit OR Surplus ---
-        # --- 3. Branch Logic: Handle Energy Deficit OR Surplus ---
-        if net_energy_production < 0:
-            # --- STATE: ENERGY DEFICIT ---
-            # A plant with a deficit ALWAYS loses stored energy from this tick's metabolism.
-            # If its reserves are also low, it will start pruning itself to reduce future costs.
-            if self.energy <= C.PLANT_GROWTH_INVESTMENT_ENERGY_RESERVE:
-                energy_deficit = abs(net_energy_production)
-                self._process_self_pruning(energy_deficit, canopy_area, root_area, core_area, world, time_step, is_debug_focused)
-                
-                if self.radius < 0.1:
-                    if is_debug_focused: log.log(f"DEATH ({self.id}): Plant pruned itself into non-existence.")
-                    self.die(world, "pruning_collapse")
-                    return
-            elif is_debug_focused:
-                log.log(f"    DEFICIT: Covering deficit of {abs(net_energy_production):.4f} J from reserves. No pruning yet.")
-        
-        else: # net_energy_production >= 0
-            # --- STATE: ENERGY SURPLUS ---
-            # The plant allocates the surplus to growth and reproduction.
-            # This function handles all energy changes internally.
-            self._allocate_surplus_energy(net_energy_production, canopy_area, root_area, core_area, world, time_step, is_debug_focused)
-            # Set net_energy to 0 because it has been "spent" on growth, preventing it from being double-counted.
-            net_energy_production = 0
-
-        # --- 4. Update Stored Energy & Check for Starvation ---
+        # --- 3. Update Stored Energy (Earn First) ---
         # This is the single point of truth for energy accounting.
-        # If in deficit, net_energy_production is negative and drains energy.
-        # If in surplus, net_energy_production was set to 0, as it was already allocated.
+        # Add this tick's surplus (or deficit) to the main energy reserve.
         self.energy += net_energy_production
+
+        # --- 4. Branch Logic: Handle Deficit OR Surplus (Budget Second, Spend Third) ---
+        if self.energy < C.PLANT_GROWTH_INVESTMENT_ENERGY_RESERVE and net_energy_production < 0:
+            # --- STATE: ENERGY DEFICIT ---
+            # We are below our safety buffer and still losing energy.
+            # Prune biomass to reduce future metabolic costs.
+            energy_deficit_this_tick = abs(net_energy_production)
+            self._process_self_pruning(energy_deficit_this_tick, canopy_area, root_area, core_area, world, time_step, is_debug_focused)
+            
+            if self.radius < 0.1:
+                if is_debug_focused: log.log(f"DEATH ({self.id}): Plant pruned itself into non-existence.")
+                self.die(world, "pruning_collapse")
+                return
+        elif self.energy > C.PLANT_GROWTH_INVESTMENT_ENERGY_RESERVE:
+            # --- STATE: ENERGY SURPLUS ---
+            # We have more energy than our buffer, so invest the excess.
+            self._allocate_surplus_energy(canopy_area, root_area, core_area, world, time_step, is_debug_focused)
+
+        # --- 5. Finalize State & Check for Starvation ---
+        # Sync the final, post-spending energy value to the manager array.
         world.plant_manager.arrays['energies'][self.index] = self.energy
 
         if is_debug_focused:
-            log.log(f"    Energy: Gained={photosynthesis_gain:.4f}, Lost={metabolism_cost:.4f}, Net added to reserves={net_energy_production:.4f}")
+            log.log(f"    Energy: Gained={photosynthesis_gain:.4f}, Lost={metabolism_cost:.4f}, Net={net_energy_production:.4f}, Final Stored={self.energy:.2f}")
 
         if self.energy <= 0:
             self.die(world, "starvation")
