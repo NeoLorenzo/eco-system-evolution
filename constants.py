@@ -271,9 +271,10 @@ PLANT_MAX_FLOWERS_PER_CANOPY_AREA = 0.0001
 # Unit: Joules (J)
 PLANT_SEED_PROVISIONING_ENERGY = 15000.0
 
-# The energy a plant will spend per hour on growth if it's in the "seedling" phase
-# (i.e., running a deficit but has large energy reserves).
-PLANT_GROWTH_INVESTMENT_J_PER_HOUR = 900.0
+# The fraction of available surplus energy (above the reserve buffer) that a plant
+# will invest into growth each hour. A value of 1.0 means it invests 100% of its surplus.
+# Unit: Unitless ratio
+PLANT_GROWTH_INVESTMENT_RATIO = 0.75
 
 # The energy threshold below which a plant will stop investing in growth to conserve energy.
 # It will not spend its last reserves on growing.

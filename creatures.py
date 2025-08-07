@@ -365,12 +365,17 @@ class Plant(Creature):
         # 2. Remaining surplus and reserves are allocated to growth.
         growth_energy = 0
         if self.energy > C.PLANT_GROWTH_INVESTMENT_ENERGY_RESERVE:
-            desired_investment = (C.PLANT_GROWTH_INVESTMENT_J_PER_HOUR / C.SECONDS_PER_HOUR) * time_step
-            # Key change: Calculate available energy above the reserve buffer.
-            available_from_surplus = self.energy - C.PLANT_GROWTH_INVESTMENT_ENERGY_RESERVE
-            # Invest the smaller of the desired amount or what's available in the surplus.
-            growth_energy = min(desired_investment, available_from_surplus)
+            # Calculate the total energy available above the safety buffer.
+            available_surplus = self.energy - C.PLANT_GROWTH_INVESTMENT_ENERGY_RESERVE
             
+            # Determine the amount to invest based on the new ratio.
+            # We scale the ratio by the time step to keep the investment rate consistent.
+            investment_per_second = available_surplus * (C.PLANT_GROWTH_INVESTMENT_RATIO / C.SECONDS_PER_HOUR)
+            growth_energy = investment_per_second * time_step
+
+            # Ensure we don't accidentally invest more than is available in the surplus.
+            growth_energy = min(growth_energy, available_surplus)
+
             self.energy -= growth_energy # Spend the energy from the main store.
 
         if is_debug_focused:
