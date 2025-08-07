@@ -18,7 +18,11 @@ class GraphingManager:
             'canopy_area': [],
             'root_area': [],
             'core_area': [],
-            'stored_energy': []
+            'stored_energy': [],
+            'aging_efficiency': [],
+            'hydraulic_efficiency': [],
+            'environmental_efficiency': [],
+            'soil_efficiency': []
         }
         self.focused_plant_id = None
         log.log("GraphingManager initialized.")
@@ -40,7 +44,7 @@ class GraphingManager:
         log.log(f"[GraphingManager] Stopped tracking Plant ID: {self.focused_plant_id}. Data will be plotted on exit.")
         self.focused_plant_id = None
 
-    def add_data_point(self, time_seconds, net_energy, height, radius, canopy_area, root_area, core_area, stored_energy):
+    def add_data_point(self, time_seconds, net_energy, height, radius, canopy_area, root_area, core_area, stored_energy, aging_eff, hydraulic_eff, env_eff, soil_eff):
         """
         Adds a single time-stamped data point to all data series.
         """
@@ -53,6 +57,10 @@ class GraphingManager:
         self.data['root_area'].append(root_area)
         self.data['core_area'].append(core_area)
         self.data['stored_energy'].append(stored_energy)
+        self.data['aging_efficiency'].append(aging_eff)
+        self.data['hydraulic_efficiency'].append(hydraulic_eff)
+        self.data['environmental_efficiency'].append(env_eff)
+        self.data['soil_efficiency'].append(soil_eff)
 
     def has_data(self):
         """
@@ -179,6 +187,35 @@ class GraphingManager:
         except Exception as e:
             log.log(f"[GraphingManager] ERROR: Could not save stored energy graph. Reason: {e}")
 
+    def generate_and_save_efficiencies_graph(self):
+        """
+        Uses matplotlib to generate and save a line graph of the plant's various efficiency multipliers.
+        """
+        log.log("[GraphingManager] Generating efficiencies plot...")
+        
+        fig, ax = plt.subplots(figsize=(12, 7))
+        
+        ax.plot(self.data['time_days'], self.data['aging_efficiency'], label='Aging Efficiency')
+        ax.plot(self.data['time_days'], self.data['hydraulic_efficiency'], label='Hydraulic Efficiency')
+        ax.plot(self.data['time_days'], self.data['environmental_efficiency'], label='Environmental Efficiency')
+        ax.plot(self.data['time_days'], self.data['soil_efficiency'], label='Soil Efficiency')
+
+        ax.set_title('Focused Plant: Efficiency Multipliers Over Time')
+        ax.set_xlabel('Time (Simulation Days)')
+        ax.set_ylabel('Efficiency (0.0 to 1.0)')
+        ax.grid(True, which='both', linestyle='--', linewidth=0.5)
+        ax.legend()
+        ax.set_ylim(0, 1.1) # Set y-axis from 0 to 1.1 for better visualization
+        
+        fig.tight_layout()
+
+        try:
+            file_path = 'focused_plant_efficiencies_graph.png'
+            fig.savefig(file_path)
+            log.log(f"[GraphingManager] Efficiencies graph saved to {file_path}")
+        except Exception as e:
+            log.log(f"[GraphingManager] ERROR: Could not save efficiencies graph. Reason: {e}")
+
     def generate_and_save_graphs(self):
         """
         Generates, saves, and displays all configured graphs if data exists.
@@ -191,5 +228,6 @@ class GraphingManager:
         self.generate_and_save_growth_graph()
         self.generate_and_save_biomass_graph()
         self.generate_and_save_stored_energy_graph()
+        self.generate_and_save_efficiencies_graph()
 
         plt.show()

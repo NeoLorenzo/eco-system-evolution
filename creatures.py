@@ -468,6 +468,15 @@ class Plant(Creature):
         if is_debug_focused and world.time_manager.total_sim_seconds >= self.last_graph_log_time + C.GRAPHING_DATA_LOG_INTERVAL_SECONDS:
             # We log the net energy per hour for better readability on the graph
             net_energy_per_hour = net_energy_production / (time_step / C.SECONDS_PER_HOUR)
+            
+            # Get the efficiency values from the manager for the current plant
+            pm = world.plant_manager
+            idx = self.index
+            aging_eff = pm.arrays['aging_efficiencies'][idx]
+            hydraulic_eff = pm.arrays['hydraulic_efficiencies'][idx]
+            env_eff = pm.arrays['environmental_efficiencies'][idx]
+            soil_eff = pm.arrays['soil_efficiencies'][idx]
+
             world.graphing_manager.add_data_point(
                 world.time_manager.total_sim_seconds,
                 net_energy_per_hour,
@@ -476,7 +485,11 @@ class Plant(Creature):
                 canopy_area,
                 root_area,
                 core_area,
-                self.energy
+                self.energy,
+                aging_eff,
+                hydraulic_eff,
+                env_eff,
+                soil_eff
             )
             self.last_graph_log_time = world.time_manager.total_sim_seconds
 
