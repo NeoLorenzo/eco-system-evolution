@@ -274,7 +274,7 @@ PLANT_SEED_PROVISIONING_ENERGY = 15000.0
 # The fraction of available surplus energy (above the reserve buffer) that a plant
 # will invest into growth each hour. A value of 1.0 means it invests 100% of its surplus.
 # Unit: Unitless ratio
-PLANT_GROWTH_INVESTMENT_RATIO = 0.75
+PLANT_GROWTH_INVESTMENT_RATIO = 0.05
 
 # The energy threshold below which a plant will stop investing in growth to conserve energy.
 # It will not spend its last reserves on growing.
